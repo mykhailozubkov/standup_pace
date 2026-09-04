@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Participant queue and speaker timer" />
+    <title>Meet Pace — speaker timer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="Meet Pace">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>Meet Pace</span>
+        </a>
+        <div class="topbar-actions">
+          <div class="language-switcher" role="group" aria-label="Language">
+            <button type="button" data-language="en" class="active">EN</button>
+            <button type="button" data-language="ru">RU</button>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero">
+          <div>
+            <p class="eyebrow" data-i18n="eyebrow">Effortless facilitation</p>
+            <h1><span data-i18n="heroLine1">Time for every</span><br /><span data-i18n="heroLine2">voice to be heard.</span></h1>
+            <p class="hero-copy" data-i18n="heroCopy">Add participants, choose a speaker, and keep the conversation moving.</p>
+          </div>
+          <form id="participantForm" class="connect-card">
+            <label for="participantNameInput" data-i18n="newParticipant">New participant</label>
+            <div class="connect-row">
+              <div class="input-wrap">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 21a7.5 7.5 0 0 1 15 0M19 8v6M16 11h6"/></svg>
+                <input id="participantNameInput" autocomplete="off" maxlength="80" placeholder="First and last name" data-i18n-placeholder="namePlaceholder" />
+              </div>
+              <button class="primary-button" type="submit" data-i18n="add">Add</button>
+            </div>
+            <div class="connect-footer">
+              <span data-i18n="savedLocally">The list is saved in this browser</span>
+            </div>
+          </form>
+        </section>
+
+        <section class="workspace-grid">
+          <article class="panel participants-panel">
+            <div class="panel-header">
+              <div>
+                <p class="section-kicker" data-i18n="queue">Queue</p>
+                <h2><span data-i18n="participants">Participants</span> <span id="participantCount" class="count-pill">0</span></h2>
+              </div>
+              <button id="clearParticipantsButton" class="text-button" type="button" data-i18n="clearList">Clear list</button>
+            </div>
+            <div id="participantsList" class="participants-list" aria-live="polite">
+              <div class="empty-state">
+                <div class="empty-orbit"><span></span></div>
+                <h3>The queue is empty</h3>
+                <p>Add your first participant using the form above.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel timer-panel">
+            <div class="panel-header">
+              <div>
+                <p class="section-kicker" data-i18n="speakingNow">Speaking now</p>
+                <h2 id="speakerName">Select a participant</h2>
+              </div>
+              <span id="timerStateBadge" class="timer-state">Ready</span>
+            </div>
+
+            <div class="timer-stage">
+              <div id="timerRing" class="timer-ring" style="--progress: 0">
+                <div class="timer-inner">
+                  <span id="timerValue">02:00</span>
+                  <small id="timerCaption">for this talk</small>
+                </div>
+              </div>
+              <div class="timer-controls">
+                <button id="toggleTimerButton" class="round-control main-control" type="button" disabled aria-label="Запустить таймер">
+                  <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7 8 5-8 5V7Z"/></svg>
+                  <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7v10M15 7v10"/></svg>
+                </button>
+                <button id="resetTimerButton" class="round-control" type="button" disabled aria-label="Сбросить таймер" title="Сбросить">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v6h6M5.5 9A7 7 0 1 1 5 16"/></svg>
+                </button>
+                <button id="finishTimerButton" class="round-control finish-control" type="button" disabled aria-label="Завершить выступление" title="Завершить">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="duration-row">
+              <span data-i18n="talkLimit">Talk time limit</span>
+              <div class="stepper">
+                <button id="decreaseDuration" type="button" aria-label="Уменьшить время">−</button>
+                <strong id="durationDisplay">2:00</strong>
+                <button id="increaseDuration" type="button" aria-label="Увеличить время">+</button>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel draw-panel current-call-draw">
+          <div class="draw-copy">
+            <p class="section-kicker" data-i18n="currentCall">This call</p>
+            <h2 data-i18n="spontaneousTask">Spontaneous task</h2>
+            <p data-i18n="currentDrawCopy">Pick someone for a light, spontaneous task during the current conversation.</p>
+          </div>
+          <div id="currentDrawResult" class="draw-result" aria-live="polite">
+            <span class="draw-placeholder-icon">?</span>
+            <div>
+              <strong>Who gets the next task?</strong>
+              <small id="currentDrawProgress">Add participants to start the draw</small>
+            </div>
+          </div>
+          <button id="currentDrawButton" class="draw-button" type="button" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3"/></svg>
+            <span data-i18n="currentDrawParticipant">Draw for this call</span>
+          </button>
+        </section>
+
+        <section class="panel draw-panel">
+          <div class="draw-copy">
+            <p class="section-kicker" data-i18n="nextCall">Next call</p>
+            <h2 data-i18n="randomTask">Random task</h2>
+            <p data-i18n="drawCopy">The draw completes a full round — everyone gets a task before the queue starts over.</p>
+          </div>
+          <div id="drawResult" class="draw-result" aria-live="polite">
+            <span class="draw-placeholder-icon">?</span>
+            <div>
+              <strong>Who will be next?</strong>
+              <small id="drawProgress">Add participants to start the draw</small>
+            </div>
+          </div>
+          <button id="drawButton" class="draw-button" type="button" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3"/></svg>
+            <span data-i18n="drawParticipant">Draw a participant</span>
+          </button>
+        </section>
+
+        <section class="panel history-panel">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker" data-i18n="today">Today</p>
+              <h2 data-i18n="actionLog">Activity log</h2>
+            </div>
+            <button id="clearHistoryButton" class="text-button" type="button" data-i18n="clear">Clear</button>
+          </div>
+          <div id="historyList" class="history-list">
+            <p class="history-empty">Completed talks and assigned tasks will appear here.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
