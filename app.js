@@ -14,6 +14,8 @@ const state = {
   currentAssignment: JSON.parse(localStorage.getItem("meetPace.currentAssignment") || "null"),
   currentCallCycle: JSON.parse(localStorage.getItem("meetPace.currentCallCycle") || "[]"),
   currentCallAssignment: JSON.parse(localStorage.getItem("meetPace.currentCallAssignment") || "null"),
+  assignmentLoading: false,
+  currentCallLoading: false,
 };
 
 const ids = [
@@ -25,27 +27,6 @@ const ids = [
   "currentDrawResult", "currentDrawProgress", "toast"
 ];
 const els = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
-
-const tasks = [
-  { id: "joke", en: "Find and tell a short joke", ru: "Найти и рассказать короткий анекдот" },
-  { id: "fact", en: "Prepare an unusual fact that will surprise the team", ru: "Подготовить необычный факт, который удивит команду" },
-  { id: "question", en: "Start the call with a question of the day", ru: "Начать звонок с вопроса дня для всех участников" },
-  { id: "recommendation", en: "Recommend a movie, book, or podcast", ru: "Порекомендовать фильм, книгу или подкаст" },
-  { id: "lifehack", en: "Share a useful work hack", ru: "Показать полезный рабочий лайфхак" },
-  { id: "discovery", en: "Prepare a one-minute story about a recent discovery", ru: "Подготовить минутную историю о недавнем открытии" },
-  { id: "warmup", en: "Come up with a quick warm-up before the discussion", ru: "Придумать лёгкую разминку перед обсуждением" },
-  { id: "win", en: "Share a small win from the past week", ru: "Рассказать о маленькой победе за последнюю неделю" },
-];
-const currentCallTasks = [
-  { id: "funny-story", en: "Tell a funny story from your life", ru: "Рассказать забавную историю из жизни" },
-  { id: "unexpected-skill", en: "Share an unexpected skill or talent", ru: "Рассказать о неожиданном навыке или таланте" },
-  { id: "two-truths", en: "Tell two truths and one lie about yourself", ru: "Рассказать о себе две правды и одну ложь" },
-  { id: "dream-trip", en: "Describe your dream trip in one minute", ru: "За минуту описать путешествие своей мечты" },
-  { id: "childhood", en: "Share a favorite childhood memory", ru: "Поделиться любимым воспоминанием из детства" },
-  { id: "superpower", en: "Choose a superpower and explain why", ru: "Выбрать суперспособность и объяснить свой выбор" },
-  { id: "good-news", en: "Share one piece of good news", ru: "Поделиться одной хорошей новостью" },
-  { id: "desk-object", en: "Show an object nearby and tell its story", ru: "Показать предмет рядом и рассказать его историю" },
-];
 
 const translations = {
   en: {
@@ -73,6 +54,35 @@ const translations = {
     currentDrawCopy: "Pick someone for a light, spontaneous task during the current conversation.",
     currentDrawParticipant: "Draw for this call", currentDrawPlaceholder: "Who gets the next task?",
     callTaskPrefix: "Call task", currentLabel: "This call",
+    generatingTask: "Generating task…", taskGenerationFailed: "Could not generate a task. Please try again.",
+    openRouterNotConfigured: "Add OPENROUTER_API_KEY and restart the server",
+    openRouterAuthError: "The OpenRouter API key was rejected. Check the key and restart the server.",
+    openRouterPaymentRequired: "OpenRouter rejected the request because of the account balance or billing settings.",
+    openRouterForbidden: "This API key does not have permission to use the selected model.",
+    openRouterContentBlocked: "OpenRouter blocked this request with a content or workspace safety rule.",
+    openRouterBadRequest: "The selected model could not accept this task request.",
+    openRouterModelNotFound: "The configured OpenRouter model is unavailable or no longer exists.",
+    openRouterRateLimit: "The free model rate limit was reached. Try again later.",
+    openRouterTimeout: "The free model took too long to respond. Please try again.",
+    openRouterPayloadTooLarge: "The request sent to OpenRouter was too large.",
+    openRouterUnprocessable: "OpenRouter could not process the task request.",
+    openRouterInternalError: "OpenRouter encountered an internal error. Please try again.",
+    openRouterProviderError: "The model provider returned an error. Please try again.",
+    openRouterUnavailable: "OpenRouter is temporarily unavailable. Please try again later.",
+    openRouterGatewayTimeout: "The model provider did not respond in time.",
+    openRouterProviderOverloaded: "The free model is overloaded. Please try again shortly.",
+    openRouterDnsError: "Could not find the OpenRouter server. Check your internet or DNS settings.",
+    openRouterNetworkBlocked: "The connection to OpenRouter was blocked by the system or firewall.",
+    openRouterNetworkError: "Could not connect to OpenRouter. Check your internet connection.",
+    openRouterInvalidResponse: "The model returned an empty or invalid task. Please try again.",
+    openRouterUnknownError: "OpenRouter returned an unexpected error. Please try again.",
+    serverUnavailable: "The local app server is unavailable. Open localhost:4173 and restart the server.",
+    serverInvalidResponse: "The local server returned an invalid response. Please restart it.",
+    serverRequestInvalid: "The app sent an invalid request to its local server.",
+    serverRequestTooLarge: "The task history is too large to send.",
+    serverInternalError: "The local server encountered an internal error.",
+    clientRequestTimeout: "Task generation took too long and was cancelled.",
+    retryAfter: "Try again in {seconds} seconds.", errorReference: "Reference",
   },
   ru: {
     pageTitle: "Meet Pace — таймер выступлений", description: "Очередь участников и таймер выступлений",
@@ -99,6 +109,35 @@ const translations = {
     currentDrawCopy: "Выберите участника для лёгкого спонтанного задания прямо во время разговора.",
     currentDrawParticipant: "Выбрать на этот звонок", currentDrawPlaceholder: "Кому достанется задание?",
     callTaskPrefix: "Задание на звонке", currentLabel: "Сейчас",
+    generatingTask: "Генерируем задание…", taskGenerationFailed: "Не удалось сгенерировать задание. Попробуйте ещё раз.",
+    openRouterNotConfigured: "Добавьте OPENROUTER_API_KEY и перезапустите сервер",
+    openRouterAuthError: "OpenRouter отклонил API-ключ. Проверьте ключ и перезапустите сервер.",
+    openRouterPaymentRequired: "OpenRouter отклонил запрос из-за баланса или настроек оплаты аккаунта.",
+    openRouterForbidden: "У API-ключа нет разрешения на использование выбранной модели.",
+    openRouterContentBlocked: "OpenRouter заблокировал запрос правилом безопасности контента или рабочего пространства.",
+    openRouterBadRequest: "Выбранная модель не смогла принять запрос на генерацию задания.",
+    openRouterModelNotFound: "Настроенная модель OpenRouter недоступна или больше не существует.",
+    openRouterRateLimit: "Лимит бесплатной модели исчерпан. Попробуйте позже.",
+    openRouterTimeout: "Бесплатная модель отвечает слишком долго. Попробуйте ещё раз.",
+    openRouterPayloadTooLarge: "Запрос к OpenRouter оказался слишком большим.",
+    openRouterUnprocessable: "OpenRouter не смог обработать запрос на генерацию задания.",
+    openRouterInternalError: "Внутренняя ошибка OpenRouter. Попробуйте ещё раз.",
+    openRouterProviderError: "Провайдер модели вернул ошибку. Попробуйте ещё раз.",
+    openRouterUnavailable: "OpenRouter временно недоступен. Попробуйте позже.",
+    openRouterGatewayTimeout: "Провайдер модели не успел ответить.",
+    openRouterProviderOverloaded: "Бесплатная модель перегружена. Попробуйте ещё раз чуть позже.",
+    openRouterDnsError: "Не удалось найти сервер OpenRouter. Проверьте интернет или настройки DNS.",
+    openRouterNetworkBlocked: "Подключение к OpenRouter заблокировано системой или файрволом.",
+    openRouterNetworkError: "Не удалось подключиться к OpenRouter. Проверьте интернет-соединение.",
+    openRouterInvalidResponse: "Модель вернула пустое или некорректное задание. Попробуйте ещё раз.",
+    openRouterUnknownError: "OpenRouter вернул неизвестную ошибку. Попробуйте ещё раз.",
+    serverUnavailable: "Локальный сервер приложения недоступен. Откройте localhost:4173 и перезапустите сервер.",
+    serverInvalidResponse: "Локальный сервер вернул некорректный ответ. Перезапустите его.",
+    serverRequestInvalid: "Приложение отправило некорректный запрос локальному серверу.",
+    serverRequestTooLarge: "История заданий слишком велика для отправки.",
+    serverInternalError: "На локальном сервере произошла внутренняя ошибка.",
+    clientRequestTimeout: "Генерация заняла слишком много времени и была отменена.",
+    retryAfter: "Повторите через {seconds} сек.", errorReference: "Код ошибки",
   },
 };
 
@@ -107,15 +146,9 @@ function tr(key) {
 }
 
 function localizedTask(assignment) {
-  const task = tasks.find((item) => item.id === assignment.taskId)
-    || tasks.find((item) => item.ru === assignment.task || item.en === assignment.task);
-  return task ? task[state.language] : assignment.task;
-}
-
-function localizedCurrentCallTask(assignment) {
-  const task = currentCallTasks.find((item) => item.id === assignment.taskId)
-    || currentCallTasks.find((item) => item.ru === assignment.task || item.en === assignment.task);
-  return task ? task[state.language] : assignment.task;
+  return state.language === "ru"
+    ? assignment.taskRu || assignment.task || assignment.taskEn || ""
+    : assignment.taskEn || assignment.task || assignment.taskRu || "";
 }
 
 function applyLanguage(language) {
@@ -221,8 +254,104 @@ function randomItem(items) {
   return items[Math.floor(Math.random() * items.length)];
 }
 
-function drawAssignment() {
-  if (!state.participants.length) return;
+function recentGeneratedTasks(type) {
+  return state.history
+    .filter((item) => item.type === type)
+    .slice(0, 12)
+    .map((item) => item.taskEn || item.taskRu || item.task)
+    .filter(Boolean);
+}
+
+async function requestGeneratedTask(kind, historyType) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 65_000);
+  let response;
+  try {
+    response = await fetch("/api/task", {
+      method: "POST",
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, recentTasks: recentGeneratedTasks(historyType) }),
+    });
+  } catch (fetchError) {
+    const error = new Error(fetchError.name === "AbortError" ? "CLIENT_REQUEST_TIMEOUT" : "SERVER_UNAVAILABLE");
+    error.code = fetchError.name === "AbortError" ? "CLIENT_REQUEST_TIMEOUT" : "SERVER_UNAVAILABLE";
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    const error = new Error("SERVER_INVALID_RESPONSE");
+    error.code = "SERVER_INVALID_RESPONSE";
+    throw error;
+  }
+  if (!response.ok) {
+    const error = new Error(payload.code || "OPENROUTER_ERROR");
+    error.code = payload.code || "OPENROUTER_ERROR";
+    error.requestId = payload.requestId;
+    error.retryAfterSeconds = payload.retryAfterSeconds;
+    throw error;
+  }
+  if (!payload.taskEn || !payload.taskRu) {
+    const error = new Error("INVALID_MODEL_RESPONSE");
+    error.code = "INVALID_MODEL_RESPONSE";
+    throw error;
+  }
+  return payload;
+}
+
+function taskErrorMessage(error) {
+  const keys = {
+    OPENROUTER_NOT_CONFIGURED: "openRouterNotConfigured",
+    OPENROUTER_AUTH_ERROR: "openRouterAuthError",
+    OPENROUTER_PAYMENT_REQUIRED: "openRouterPaymentRequired",
+    OPENROUTER_FORBIDDEN: "openRouterForbidden",
+    OPENROUTER_CONTENT_BLOCKED: "openRouterContentBlocked",
+    OPENROUTER_BAD_REQUEST: "openRouterBadRequest",
+    OPENROUTER_MODEL_NOT_FOUND: "openRouterModelNotFound",
+    OPENROUTER_RATE_LIMIT: "openRouterRateLimit",
+    OPENROUTER_TIMEOUT: "openRouterTimeout",
+    OPENROUTER_PAYLOAD_TOO_LARGE: "openRouterPayloadTooLarge",
+    OPENROUTER_UNPROCESSABLE_REQUEST: "openRouterUnprocessable",
+    OPENROUTER_INTERNAL_ERROR: "openRouterInternalError",
+    OPENROUTER_PROVIDER_ERROR: "openRouterProviderError",
+    OPENROUTER_UNAVAILABLE: "openRouterUnavailable",
+    OPENROUTER_GATEWAY_TIMEOUT: "openRouterGatewayTimeout",
+    OPENROUTER_PROVIDER_OVERLOADED: "openRouterProviderOverloaded",
+    OPENROUTER_DNS_ERROR: "openRouterDnsError",
+    OPENROUTER_NETWORK_BLOCKED: "openRouterNetworkBlocked",
+    OPENROUTER_NETWORK_ERROR: "openRouterNetworkError",
+    OPENROUTER_INVALID_RESPONSE: "openRouterInvalidResponse",
+    OPENROUTER_ERROR: "openRouterUnknownError",
+    INVALID_MODEL_RESPONSE: "openRouterInvalidResponse",
+    SERVER_UNAVAILABLE: "serverUnavailable",
+    SERVER_INVALID_RESPONSE: "serverInvalidResponse",
+    INVALID_JSON: "serverRequestInvalid",
+    INVALID_TASK_KIND: "serverRequestInvalid",
+    INVALID_RECENT_TASKS: "serverRequestInvalid",
+    UNSUPPORTED_MEDIA_TYPE: "serverRequestInvalid",
+    METHOD_NOT_ALLOWED: "serverRequestInvalid",
+    INVALID_URL: "serverRequestInvalid",
+    REQUEST_TOO_LARGE: "serverRequestTooLarge",
+    INTERNAL_SERVER_ERROR: "serverInternalError",
+    CLIENT_REQUEST_TIMEOUT: "clientRequestTimeout",
+  };
+  let message = tr(keys[error.code] || "taskGenerationFailed");
+  if (Number.isFinite(error.retryAfterSeconds)) {
+    message += ` ${tr("retryAfter").replace("{seconds}", Math.ceil(error.retryAfterSeconds))}`;
+  }
+  if (error.requestId && ["INTERNAL_SERVER_ERROR", "OPENROUTER_ERROR"].includes(error.code)) {
+    message += ` ${tr("errorReference")}: ${String(error.requestId).slice(0, 8)}`;
+  }
+  return message;
+}
+
+async function drawAssignment() {
+  if (!state.participants.length || state.assignmentLoading) return;
   pruneAssignmentCycle();
   let eligible = state.participants.filter((participant) => !state.assignmentCycle.includes(participant.id));
   if (!eligible.length) {
@@ -231,32 +360,40 @@ function drawAssignment() {
   }
 
   const participant = randomItem(eligible);
-  const previousTaskId = state.currentAssignment?.taskId;
-  const availableTasks = tasks.filter((task) => task.id !== previousTaskId);
-  const task = randomItem(availableTasks.length ? availableTasks : tasks);
-  const assignment = {
-    id: crypto.randomUUID(),
-    type: "assignment",
-    participantId: participant.id,
-    participantName: participant.displayName,
-    taskId: task.id,
-    task: task[state.language],
-    finishedAt: new Date().toISOString(),
-  };
-
-  state.assignmentCycle.push(participant.id);
-  state.currentAssignment = assignment;
-  state.history.unshift(assignment);
-  state.history = state.history.slice(0, 50);
-  localStorage.setItem("meetPace.history", JSON.stringify(state.history));
-  saveAssignmentState();
+  state.assignmentLoading = true;
   renderDraw();
-  renderHistory();
-  showToast(`${tr("assignmentGoesTo")} ${participant.displayName}`);
+  try {
+    const generated = await requestGeneratedTask("next", "assignment");
+    const assignment = {
+      id: crypto.randomUUID(),
+      type: "assignment",
+      participantId: participant.id,
+      participantName: participant.displayName,
+      taskEn: generated.taskEn,
+      taskRu: generated.taskRu,
+      task: state.language === "ru" ? generated.taskRu : generated.taskEn,
+      model: generated.model,
+      finishedAt: new Date().toISOString(),
+    };
+
+    state.assignmentCycle.push(participant.id);
+    state.currentAssignment = assignment;
+    state.history.unshift(assignment);
+    state.history = state.history.slice(0, 50);
+    localStorage.setItem("meetPace.history", JSON.stringify(state.history));
+    saveAssignmentState();
+    renderHistory();
+    showToast(`${tr("assignmentGoesTo")} ${participant.displayName}`);
+  } catch (error) {
+    showToast(taskErrorMessage(error), true);
+  } finally {
+    state.assignmentLoading = false;
+    renderDraw();
+  }
 }
 
-function drawCurrentCallAssignment() {
-  if (!state.participants.length) return;
+async function drawCurrentCallAssignment() {
+  if (!state.participants.length || state.currentCallLoading) return;
   pruneCurrentCallCycle();
   let eligible = state.participants.filter((participant) => !state.currentCallCycle.includes(participant.id));
   if (!eligible.length) {
@@ -265,33 +402,43 @@ function drawCurrentCallAssignment() {
   }
 
   const participant = randomItem(eligible);
-  const previousTaskId = state.currentCallAssignment?.taskId;
-  const availableTasks = currentCallTasks.filter((task) => task.id !== previousTaskId);
-  const task = randomItem(availableTasks.length ? availableTasks : currentCallTasks);
-  const assignment = {
-    id: crypto.randomUUID(),
-    type: "current-assignment",
-    participantId: participant.id,
-    participantName: participant.displayName,
-    taskId: task.id,
-    task: task[state.language],
-    finishedAt: new Date().toISOString(),
-  };
-
-  state.currentCallCycle.push(participant.id);
-  state.currentCallAssignment = assignment;
-  state.history.unshift(assignment);
-  state.history = state.history.slice(0, 50);
-  localStorage.setItem("meetPace.history", JSON.stringify(state.history));
-  saveCurrentCallState();
+  state.currentCallLoading = true;
   renderCurrentDraw();
-  renderHistory();
-  showToast(`${tr("assignmentGoesTo")} ${participant.displayName}`);
+  try {
+    const generated = await requestGeneratedTask("current", "current-assignment");
+    const assignment = {
+      id: crypto.randomUUID(),
+      type: "current-assignment",
+      participantId: participant.id,
+      participantName: participant.displayName,
+      taskEn: generated.taskEn,
+      taskRu: generated.taskRu,
+      task: state.language === "ru" ? generated.taskRu : generated.taskEn,
+      model: generated.model,
+      finishedAt: new Date().toISOString(),
+    };
+
+    state.currentCallCycle.push(participant.id);
+    state.currentCallAssignment = assignment;
+    state.history.unshift(assignment);
+    state.history = state.history.slice(0, 50);
+    localStorage.setItem("meetPace.history", JSON.stringify(state.history));
+    saveCurrentCallState();
+    renderHistory();
+    showToast(`${tr("assignmentGoesTo")} ${participant.displayName}`);
+  } catch (error) {
+    showToast(taskErrorMessage(error), true);
+  } finally {
+    state.currentCallLoading = false;
+    renderCurrentDraw();
+  }
 }
 
 function renderDraw() {
   pruneAssignmentCycle();
-  els.drawButton.disabled = state.participants.length === 0;
+  els.drawButton.disabled = state.participants.length === 0 || state.assignmentLoading;
+  els.drawButton.classList.toggle("loading", state.assignmentLoading);
+  els.drawButton.querySelector("span").textContent = tr(state.assignmentLoading ? "generatingTask" : "drawParticipant");
   const remaining = Math.max(0, state.participants.length - state.assignmentCycle.length);
   const participantWord = state.language === "ru"
     ? wordForm(remaining, "участник", "участника", "участников")
@@ -331,7 +478,9 @@ function renderDraw() {
 
 function renderCurrentDraw() {
   pruneCurrentCallCycle();
-  els.currentDrawButton.disabled = state.participants.length === 0;
+  els.currentDrawButton.disabled = state.participants.length === 0 || state.currentCallLoading;
+  els.currentDrawButton.classList.toggle("loading", state.currentCallLoading);
+  els.currentDrawButton.querySelector("span").textContent = tr(state.currentCallLoading ? "generatingTask" : "currentDrawParticipant");
   const remaining = Math.max(0, state.participants.length - state.currentCallCycle.length);
   const participantWord = state.language === "ru"
     ? wordForm(remaining, "участник", "участника", "участников")
@@ -360,7 +509,7 @@ function renderCurrentDraw() {
     name.textContent = assignment.participantName;
     const taskText = document.createElement("div");
     taskText.className = "draw-task";
-    taskText.textContent = localizedCurrentCallTask(assignment);
+    taskText.textContent = localizedTask(assignment);
     const progress = document.createElement("small");
     progress.id = "currentDrawProgress";
     content.append(name, taskText, progress);
@@ -574,7 +723,7 @@ function renderHistory() {
     if (isAssignment) {
       const taskText = document.createElement("div");
       taskText.className = "history-task";
-      taskText.textContent = isCurrentAssignment ? localizedCurrentCallTask(item) : localizedTask(item);
+      taskText.textContent = localizedTask(item);
       info.append(taskText);
     }
     info.append(time);
@@ -589,8 +738,9 @@ function renderHistory() {
 function showToast(message, error = false) {
   els.toast.textContent = message;
   els.toast.className = `toast show${error ? " error" : ""}`;
+  els.toast.setAttribute("role", error ? "alert" : "status");
   window.clearTimeout(showToast.timer);
-  showToast.timer = window.setTimeout(() => els.toast.className = "toast", 3200);
+  showToast.timer = window.setTimeout(() => els.toast.className = "toast", error ? 6000 : 3200);
 }
 
 els.participantForm.addEventListener("submit", (event) => {
