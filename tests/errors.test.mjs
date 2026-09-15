@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AppError, mapNetworkError, mapOpenRouterError, publicStatusForError } from "../errors.mjs";
+import { AppError, mapNetworkError, mapOpenRouterError, publicStatusForError } from "../src/errors.mjs";
 
 const openRouterCases = [
   [400, "OPENROUTER_BAD_REQUEST", false],

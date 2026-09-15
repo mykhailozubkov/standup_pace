@@ -1,19 +1,19 @@
 const state = {
-  language: localStorage.getItem("meetPace.language") || "en",
-  participants: JSON.parse(localStorage.getItem("meetPace.participants") || "[]"),
+  language: localStorage.getItem("standupHelper.language") || "en",
+  participants: JSON.parse(localStorage.getItem("standupHelper.participants") || "[]"),
   selectedParticipant: null,
-  durationSeconds: Number(localStorage.getItem("meetPace.duration")) || 120,
+  durationSeconds: Number(localStorage.getItem("standupHelper.duration")) || 120,
   remainingSeconds: 120,
   timerStartedAt: null,
   elapsedBeforeStart: 0,
   timerId: null,
   running: false,
   overtimeNotified: false,
-  history: JSON.parse(localStorage.getItem("meetPace.history") || "[]"),
-  assignmentCycle: JSON.parse(localStorage.getItem("meetPace.assignmentCycle") || "[]"),
-  currentAssignment: JSON.parse(localStorage.getItem("meetPace.currentAssignment") || "null"),
-  currentCallCycle: JSON.parse(localStorage.getItem("meetPace.currentCallCycle") || "[]"),
-  currentCallAssignment: JSON.parse(localStorage.getItem("meetPace.currentCallAssignment") || "null"),
+  history: JSON.parse(localStorage.getItem("standupHelper.history") || "[]"),
+  assignmentCycle: JSON.parse(localStorage.getItem("standupHelper.assignmentCycle") || "[]"),
+  currentAssignment: JSON.parse(localStorage.getItem("standupHelper.currentAssignment") || "null"),
+  currentCallCycle: JSON.parse(localStorage.getItem("standupHelper.currentCallCycle") || "[]"),
+  currentCallAssignment: JSON.parse(localStorage.getItem("standupHelper.currentCallAssignment") || "null"),
   assignmentLoading: false,
   currentCallLoading: false,
 };
@@ -24,14 +24,14 @@ const ids = [
   "timerValue", "timerCaption", "toggleTimerButton", "resetTimerButton", "finishTimerButton",
   "decreaseDuration", "increaseDuration", "durationDisplay", "historyList",
   "clearHistoryButton", "drawButton", "drawResult", "drawProgress", "currentDrawButton",
-  "currentDrawResult", "currentDrawProgress", "toast"
+  "currentDrawResult", "currentDrawProgress", "logoutButton", "toast"
 ];
 const els = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 
 const translations = {
   en: {
-    pageTitle: "Meet Pace — speaker timer", description: "Participant queue and speaker timer",
-    localSession: "Local session", eyebrow: "Effortless facilitation", heroLine1: "Time for every",
+    pageTitle: "Standup Helper — speaker timer", description: "Participant queue, speaker timer, and team activities",
+    eyebrow: "Effortless facilitation", heroLine1: "Time for every",
     heroLine2: "voice to be heard.", heroCopy: "Add participants, choose a speaker, and keep the conversation moving.",
     newParticipant: "New participant", namePlaceholder: "First and last name", add: "Add",
     savedLocally: "The list is saved in this browser", queue: "Queue",
@@ -55,7 +55,7 @@ const translations = {
     currentDrawParticipant: "Draw for this call", currentDrawPlaceholder: "Who gets the next task?",
     callTaskPrefix: "Call task", currentLabel: "This call",
     generatingTask: "Generating task…", taskGenerationFailed: "Could not generate a task. Please try again.",
-    openRouterNotConfigured: "Add OPENROUTER_API_KEY and restart the server",
+    openRouterNotConfigured: "OpenRouter is not configured for this deployment.",
     openRouterAuthError: "The OpenRouter API key was rejected. Check the key and restart the server.",
     openRouterPaymentRequired: "OpenRouter rejected the request because of the account balance or billing settings.",
     openRouterForbidden: "This API key does not have permission to use the selected model.",
@@ -76,17 +76,19 @@ const translations = {
     openRouterNetworkError: "Could not connect to OpenRouter. Check your internet connection.",
     openRouterInvalidResponse: "The model returned an empty or invalid task. Please try again.",
     openRouterUnknownError: "OpenRouter returned an unexpected error. Please try again.",
-    serverUnavailable: "The local app server is unavailable. Open localhost:4173 and restart the server.",
-    serverInvalidResponse: "The local server returned an invalid response. Please restart it.",
-    serverRequestInvalid: "The app sent an invalid request to its local server.",
+    serverUnavailable: "The Standup Helper service is unavailable. Check your connection and try again.",
+    serverInvalidResponse: "The service returned an invalid response. Please try again.",
+    serverRequestInvalid: "The app sent an invalid request to the service.",
     serverRequestTooLarge: "The task history is too large to send.",
-    serverInternalError: "The local server encountered an internal error.",
+    serverInternalError: "The service encountered an internal error.",
     clientRequestTimeout: "Task generation took too long and was cancelled.",
     retryAfter: "Try again in {seconds} seconds.", errorReference: "Reference",
+    logout: "Log out", loggingOut: "Logging out…", logoutFailed: "Could not log out. Please try again.",
+    sessionExpired: "Your admin session expired. Sign in again.",
   },
   ru: {
-    pageTitle: "Meet Pace — таймер выступлений", description: "Очередь участников и таймер выступлений",
-    localSession: "Локальная сессия", eyebrow: "Фасилитация без суеты", heroLine1: "Каждому — время",
+    pageTitle: "Standup Helper — таймер выступлений", description: "Очередь участников, таймер выступлений и командные активности",
+    eyebrow: "Фасилитация без суеты", heroLine1: "Каждому — время",
     heroLine2: "быть услышанным.", heroCopy: "Добавьте участников, выберите выступающего и держите обсуждение в ритме.",
     newParticipant: "Новый участник", namePlaceholder: "Имя и фамилия", add: "Добавить",
     savedLocally: "Список сохранится в этом браузере", queue: "Очередь",
@@ -110,7 +112,7 @@ const translations = {
     currentDrawParticipant: "Выбрать на этот звонок", currentDrawPlaceholder: "Кому достанется задание?",
     callTaskPrefix: "Задание на звонке", currentLabel: "Сейчас",
     generatingTask: "Генерируем задание…", taskGenerationFailed: "Не удалось сгенерировать задание. Попробуйте ещё раз.",
-    openRouterNotConfigured: "Добавьте OPENROUTER_API_KEY и перезапустите сервер",
+    openRouterNotConfigured: "OpenRouter не настроен для этого приложения.",
     openRouterAuthError: "OpenRouter отклонил API-ключ. Проверьте ключ и перезапустите сервер.",
     openRouterPaymentRequired: "OpenRouter отклонил запрос из-за баланса или настроек оплаты аккаунта.",
     openRouterForbidden: "У API-ключа нет разрешения на использование выбранной модели.",
@@ -131,13 +133,15 @@ const translations = {
     openRouterNetworkError: "Не удалось подключиться к OpenRouter. Проверьте интернет-соединение.",
     openRouterInvalidResponse: "Модель вернула пустое или некорректное задание. Попробуйте ещё раз.",
     openRouterUnknownError: "OpenRouter вернул неизвестную ошибку. Попробуйте ещё раз.",
-    serverUnavailable: "Локальный сервер приложения недоступен. Откройте localhost:4173 и перезапустите сервер.",
-    serverInvalidResponse: "Локальный сервер вернул некорректный ответ. Перезапустите его.",
-    serverRequestInvalid: "Приложение отправило некорректный запрос локальному серверу.",
+    serverUnavailable: "Сервис Standup Helper недоступен. Проверьте подключение и попробуйте ещё раз.",
+    serverInvalidResponse: "Сервис вернул некорректный ответ. Попробуйте ещё раз.",
+    serverRequestInvalid: "Приложение отправило сервису некорректный запрос.",
     serverRequestTooLarge: "История заданий слишком велика для отправки.",
-    serverInternalError: "На локальном сервере произошла внутренняя ошибка.",
+    serverInternalError: "В сервисе произошла внутренняя ошибка.",
     clientRequestTimeout: "Генерация заняла слишком много времени и была отменена.",
     retryAfter: "Повторите через {seconds} сек.", errorReference: "Код ошибки",
+    logout: "Выйти", loggingOut: "Выходим…", logoutFailed: "Не удалось выйти. Попробуйте ещё раз.",
+    sessionExpired: "Сессия администратора закончилась. Войдите снова.",
   },
 };
 
@@ -153,7 +157,7 @@ function localizedTask(assignment) {
 
 function applyLanguage(language) {
   state.language = language === "ru" ? "ru" : "en";
-  localStorage.setItem("meetPace.language", state.language);
+  localStorage.setItem("standupHelper.language", state.language);
   document.documentElement.lang = state.language;
   document.title = tr("pageTitle");
   document.querySelector('meta[name="description"]').content = tr("description");
@@ -191,17 +195,17 @@ function avatarColor(value) {
 }
 
 function saveParticipants() {
-  localStorage.setItem("meetPace.participants", JSON.stringify(state.participants));
+  localStorage.setItem("standupHelper.participants", JSON.stringify(state.participants));
 }
 
 function saveAssignmentState() {
-  localStorage.setItem("meetPace.assignmentCycle", JSON.stringify(state.assignmentCycle));
-  localStorage.setItem("meetPace.currentAssignment", JSON.stringify(state.currentAssignment));
+  localStorage.setItem("standupHelper.assignmentCycle", JSON.stringify(state.assignmentCycle));
+  localStorage.setItem("standupHelper.currentAssignment", JSON.stringify(state.currentAssignment));
 }
 
 function saveCurrentCallState() {
-  localStorage.setItem("meetPace.currentCallCycle", JSON.stringify(state.currentCallCycle));
-  localStorage.setItem("meetPace.currentCallAssignment", JSON.stringify(state.currentCallAssignment));
+  localStorage.setItem("standupHelper.currentCallCycle", JSON.stringify(state.currentCallCycle));
+  localStorage.setItem("standupHelper.currentCallAssignment", JSON.stringify(state.currentCallAssignment));
 }
 
 function pruneAssignmentCycle() {
@@ -294,6 +298,9 @@ async function requestGeneratedTask(kind, historyType) {
     error.code = payload.code || "OPENROUTER_ERROR";
     error.requestId = payload.requestId;
     error.retryAfterSeconds = payload.retryAfterSeconds;
+    if (error.code === "AUTH_REQUIRED") {
+      window.setTimeout(() => window.location.replace("/"), 1200);
+    }
     throw error;
   }
   if (!payload.taskEn || !payload.taskRu) {
@@ -339,6 +346,7 @@ function taskErrorMessage(error) {
     REQUEST_TOO_LARGE: "serverRequestTooLarge",
     INTERNAL_SERVER_ERROR: "serverInternalError",
     CLIENT_REQUEST_TIMEOUT: "clientRequestTimeout",
+    AUTH_REQUIRED: "sessionExpired",
   };
   let message = tr(keys[error.code] || "taskGenerationFailed");
   if (Number.isFinite(error.retryAfterSeconds)) {
@@ -380,7 +388,7 @@ async function drawAssignment() {
     state.currentAssignment = assignment;
     state.history.unshift(assignment);
     state.history = state.history.slice(0, 50);
-    localStorage.setItem("meetPace.history", JSON.stringify(state.history));
+    localStorage.setItem("standupHelper.history", JSON.stringify(state.history));
     saveAssignmentState();
     renderHistory();
     showToast(`${tr("assignmentGoesTo")} ${participant.displayName}`);
@@ -422,7 +430,7 @@ async function drawCurrentCallAssignment() {
     state.currentCallAssignment = assignment;
     state.history.unshift(assignment);
     state.history = state.history.slice(0, 50);
-    localStorage.setItem("meetPace.history", JSON.stringify(state.history));
+    localStorage.setItem("standupHelper.history", JSON.stringify(state.history));
     saveCurrentCallState();
     renderHistory();
     showToast(`${tr("assignmentGoesTo")} ${participant.displayName}`);
@@ -595,7 +603,7 @@ function selectParticipant(participant) {
 
 function setDuration(seconds) {
   state.durationSeconds = Math.max(30, Math.min(900, seconds));
-  localStorage.setItem("meetPace.duration", String(state.durationSeconds));
+  localStorage.setItem("standupHelper.duration", String(state.durationSeconds));
   if (!state.running) state.remainingSeconds = state.durationSeconds;
   renderTimer();
 }
@@ -690,7 +698,7 @@ function finishTalk() {
       finishedAt: new Date().toISOString(),
     });
     state.history = state.history.slice(0, 50);
-    localStorage.setItem("meetPace.history", JSON.stringify(state.history));
+    localStorage.setItem("standupHelper.history", JSON.stringify(state.history));
   }
   clearCurrentSpeaker();
   renderParticipants();
@@ -743,6 +751,21 @@ function showToast(message, error = false) {
   showToast.timer = window.setTimeout(() => els.toast.className = "toast", error ? 6000 : 3200);
 }
 
+async function logout() {
+  if (els.logoutButton.disabled) return;
+  els.logoutButton.disabled = true;
+  els.logoutButton.textContent = tr("loggingOut");
+  try {
+    const response = await fetch("/api/auth/logout", { method: "POST" });
+    if (!response.ok) throw new Error("LOGOUT_FAILED");
+    window.location.replace("/");
+  } catch {
+    els.logoutButton.disabled = false;
+    els.logoutButton.textContent = tr("logout");
+    showToast(tr("logoutFailed"), true);
+  }
+}
+
 els.participantForm.addEventListener("submit", (event) => {
   event.preventDefault();
   addParticipant(els.participantNameInput.value);
@@ -771,11 +794,12 @@ els.decreaseDuration.addEventListener("click", () => setDuration(state.durationS
 els.increaseDuration.addEventListener("click", () => setDuration(state.durationSeconds + 30));
 els.clearHistoryButton.addEventListener("click", () => {
   state.history = [];
-  localStorage.removeItem("meetPace.history");
+  localStorage.removeItem("standupHelper.history");
   renderHistory();
 });
 els.drawButton.addEventListener("click", drawAssignment);
 els.currentDrawButton.addEventListener("click", drawCurrentCallAssignment);
+els.logoutButton.addEventListener("click", logout);
 document.querySelectorAll("[data-language]").forEach((button) => {
   button.addEventListener("click", () => applyLanguage(button.dataset.language));
 });

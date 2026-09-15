@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Sign in to the Standup Helper admin workspace" />
+    <title>Standup Helper — admin sign in</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="login-page">
+    <div class="login-shell">
+      <header class="login-topbar">
+        <a class="brand" href="/" aria-label="Standup Helper">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>Standup Helper</span>
+        </a>
+        <div class="language-switcher" role="group" aria-label="Language">
+          <button type="button" data-language="en" class="active">EN</button>
+          <button type="button" data-language="ru">RU</button>
+        </div>
+      </header>
+
+      <main class="login-main">
+        <section class="login-intro">
+          <p class="eyebrow" data-i18n="eyebrow">A calmer rhythm for every meeting</p>
+          <h1><span data-i18n="heroLine1">Keep every voice</span><br /><span data-i18n="heroLine2">in the conversation.</span></h1>
+          <p data-i18n="heroCopy">Sign in to manage participants, speaking time, and team activities.</p>
+        </section>
+
+        <section class="login-card" aria-labelledby="loginTitle">
+          <div class="login-card-heading">
+            <p class="section-kicker" data-i18n="adminArea">Admin area</p>
+            <h2 id="loginTitle" data-i18n="signIn">Sign in</h2>
+            <p data-i18n="signInCopy">Use the administrator credentials configured for this deployment.</p>
+          </div>
+
+          <form id="loginForm" novalidate>
+            <label for="usernameInput" data-i18n="username">Username</label>
+            <input id="usernameInput" name="username" type="text" maxlength="128" autocomplete="username" required />
+
+            <label for="passwordInput" data-i18n="password">Password</label>
+            <input id="passwordInput" name="password" type="password" maxlength="512" autocomplete="current-password" required />
+
+            <p id="loginMessage" class="login-message" role="alert" aria-live="polite"></p>
+            <button id="loginButton" class="login-button" type="submit" data-i18n="continue">Continue</button>
+          </form>
+
+          <p class="login-session-note" data-i18n="sessionNote">Your secure session lasts for 24 hours.</p>
+        </section>
+      </main>
+    </div>
+
+    <script src="/login.js"></script>
+  </body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "standup-helper",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --config wrangler.jsonc",
+    "deploy": "wrangler deploy --config wrangler.jsonc",
+    "check": "node --check src/worker.mjs && node --check src/auth.mjs && node --check src/openrouter.mjs && node --check public/app.js && node --check public/login.js",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "wrangler": "^4.34.0"
+  }
+}
