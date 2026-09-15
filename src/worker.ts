@@ -1,4 +1,5 @@
-import { AppError, publicStatusForError } from "./errors.mjs";
+import { Hono } from "hono";
+import { AppError, publicStatusForError } from "./errors.ts";
 import {
   createSessionToken,
   expiredSessionCookie,
@@ -6,8 +7,11 @@ import {
   requireValidSession,
   sessionCookie,
   verifyAdminCredentials,
-} from "./auth.mjs";
-import { requestOpenRouterTask } from "./openrouter.mjs";
+} from "./auth.ts";
+import type { Env } from "./env.ts";
+import { requestOpenRouterTask } from "./openrouter.ts";
+
+type AppContext = { Bindings: Env };
 
 const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
@@ -17,7 +21,7 @@ const SECURITY_HEADERS = {
   "X-Frame-Options": "DENY",
 };
 
-function withSecurityHeaders(response, request) {
+function withSecurityHeaders(response: Response, request: Request) {
   const headers = new Headers(response.headers);
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
   if (new URL(request.url).protocol === "https:") {
@@ -30,7 +34,7 @@ function withSecurityHeaders(response, request) {
   });
 }
 
-function sendJson(status, payload, extraHeaders = {}) {
+function sendJson(status: number, payload: unknown, extraHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
@@ -41,16 +45,19 @@ function sendJson(status, payload, extraHeaders = {}) {
   });
 }
 
-function sendApiError(error, requestId, extraHeaders = {}) {
+function sendApiError(error: unknown, requestId: string, extraHeaders: Record<string, string> = {}) {
   const safeError = error instanceof AppError
     ? error
     : new AppError("INTERNAL_SERVER_ERROR", 500);
-  const payload = { code: safeError.code, requestId };
+  const payload: { code: string; requestId: string; retryAfterSeconds?: number } = {
+    code: safeError.code,
+    requestId,
+  };
   if (safeError.retryAfterSeconds) payload.retryAfterSeconds = safeError.retryAfterSeconds;
   return sendJson(publicStatusForError(safeError), payload, extraHeaders);
 }
 
-async function readJson(request, maximumBytes = 16_384) {
+async function readJson(request: Request, maximumBytes = 16_384): Promise<Record<string, unknown>> {
   const contentType = request.headers.get("Content-Type") || "";
   if (!contentType.toLowerCase().includes("application/json")) {
     throw new AppError("UNSUPPORTED_MEDIA_TYPE", 415);
@@ -64,13 +71,17 @@ async function readJson(request, maximumBytes = 16_384) {
   const body = await request.arrayBuffer();
   if (body.byteLength > maximumBytes) throw new AppError("REQUEST_TOO_LARGE", 413);
   try {
-    return JSON.parse(new TextDecoder().decode(body) || "{}");
+    const value: unknown = JSON.parse(new TextDecoder().decode(body) || "{}");
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new AppError("INVALID_JSON", 400);
+    }
+    return value as Record<string, unknown>;
   } catch {
     throw new AppError("INVALID_JSON", 400);
   }
 }
 
-function requireMethod(request, method) {
+function requireMethod(request: Request, method: string) {
   if (request.method !== method) {
     const error = new AppError("METHOD_NOT_ALLOWED", 405);
     error.allowedMethod = method;
@@ -78,7 +89,7 @@ function requireMethod(request, method) {
   }
 }
 
-async function sessionState(request, env) {
+async function sessionState(request: Request, env: Env) {
   try {
     return { authenticated: await hasValidSession(request, env), configured: true };
   } catch (error) {
@@ -89,10 +100,9 @@ async function sessionState(request, env) {
   }
 }
 
-async function handleLogin(request, env) {
+async function handleLogin(request: Request, env: Env) {
   requireMethod(request, "POST");
   const body = await readJson(request, 2_048);
-  if (!body || typeof body !== "object") throw new AppError("INVALID_JSON", 400);
   const valid = await verifyAdminCredentials(env, body.username, body.password);
   if (!valid) throw new AppError("INVALID_CREDENTIALS", 401);
 
@@ -102,26 +112,26 @@ async function handleLogin(request, env) {
   });
 }
 
-async function handleLogout(request) {
+async function handleLogout(request: Request) {
   requireMethod(request, "POST");
   return sendJson(200, { authenticated: false }, {
     "Set-Cookie": expiredSessionCookie(request),
   });
 }
 
-async function handleTask(request, env) {
+async function handleTask(request: Request, env: Env) {
   requireMethod(request, "POST");
   requireValidSession(await hasValidSession(request, env));
 
   const body = await readJson(request);
-  if (!body || typeof body !== "object" || !["current", "next"].includes(body.kind)) {
+  if (body.kind !== "current" && body.kind !== "next") {
     throw new AppError("INVALID_TASK_KIND", 400);
   }
   if (body.recentTasks !== undefined && !Array.isArray(body.recentTasks)) {
     throw new AppError("INVALID_RECENT_TASKS", 400);
   }
 
-  const recentTasks = (body.recentTasks || [])
+  const recentTasks = ((body.recentTasks || []) as unknown[])
     .slice(0, 12)
     .map((task) => String(task).trim().slice(0, 240))
     .filter(Boolean);
@@ -133,7 +143,7 @@ async function handleTask(request, env) {
   ));
 }
 
-async function assetResponse(env, request, pathname) {
+async function assetResponse(env: Env, request: Request, pathname: string) {
   const assetUrl = new URL(request.url);
   assetUrl.pathname = pathname;
   assetUrl.search = "";
@@ -147,54 +157,68 @@ async function assetResponse(env, request, pathname) {
   return response;
 }
 
-async function handlePage(request, env, pathname) {
+async function handlePage(request: Request, env: Env, pathname: string) {
   if (!["GET", "HEAD"].includes(request.method)) throw new AppError("METHOD_NOT_ALLOWED", 405);
 
   if (["/", "/login.html"].includes(pathname)) {
     const session = await sessionState(request, env);
-    if (session.authenticated) return Response.redirect(new URL("/admin", request.url), 302);
+    if (session.authenticated) return Response.redirect(new URL("/admin", request.url).toString(), 302);
     return assetResponse(env, request, "/login.html");
   }
 
   if (["/admin", "/admin/", "/admin.html"].includes(pathname)) {
     const session = await sessionState(request, env);
-    if (!session.authenticated) return Response.redirect(new URL("/", request.url), 302);
+    if (!session.authenticated) return Response.redirect(new URL("/", request.url).toString(), 302);
     return assetResponse(env, request, "/admin.html");
   }
 
   return assetResponse(env, request, pathname);
 }
 
+function methodNotAllowed(method: string): never {
+  const error = new AppError("METHOD_NOT_ALLOWED", 405);
+  error.allowedMethod = method;
+  throw error;
+}
+
+const app = new Hono<AppContext>();
+
+app.get("/api/auth/session", async (context) => (
+  sendJson(200, await sessionState(context.req.raw, context.env))
+));
+app.all("/api/auth/session", () => methodNotAllowed("GET"));
+
+app.post("/api/auth/login", (context) => handleLogin(context.req.raw, context.env));
+app.all("/api/auth/login", () => methodNotAllowed("POST"));
+
+app.post("/api/auth/logout", (context) => handleLogout(context.req.raw));
+app.all("/api/auth/logout", () => methodNotAllowed("POST"));
+
+app.post("/api/task", (context) => handleTask(context.req.raw, context.env));
+app.all("/api/task", () => methodNotAllowed("POST"));
+
+app.all("/api/*", () => {
+  throw new AppError("NOT_FOUND", 404);
+});
+
+app.all("*", (context) => handlePage(
+  context.req.raw,
+  context.env,
+  new URL(context.req.url).pathname,
+));
+
+app.onError((error) => {
+  const requestId = crypto.randomUUID();
+  if (!(error instanceof AppError)) {
+    console.error(`[${requestId}] Unexpected Worker error`, error);
+  }
+  const headers: Record<string, string> = {};
+  if (error instanceof AppError && error.allowedMethod) headers.Allow = error.allowedMethod;
+  return sendApiError(error, requestId, headers);
+});
+
 export default {
-  async fetch(request, env) {
-    const requestId = crypto.randomUUID();
-    let pathname = "/";
-    try {
-      pathname = new URL(request.url).pathname;
-
-      if (pathname === "/api/auth/session") {
-        requireMethod(request, "GET");
-        return withSecurityHeaders(sendJson(200, await sessionState(request, env)), request);
-      }
-      if (pathname === "/api/auth/login") {
-        return withSecurityHeaders(await handleLogin(request, env), request);
-      }
-      if (pathname === "/api/auth/logout") {
-        return withSecurityHeaders(await handleLogout(request), request);
-      }
-      if (pathname === "/api/task") {
-        return withSecurityHeaders(await handleTask(request, env), request);
-      }
-      if (pathname.startsWith("/api/")) throw new AppError("NOT_FOUND", 404);
-
-      return withSecurityHeaders(await handlePage(request, env, pathname), request);
-    } catch (error) {
-      if (!(error instanceof AppError)) {
-        console.error(`[${requestId}] Unexpected Worker error`, error);
-      }
-      const headers = {};
-      if (error instanceof AppError && error.allowedMethod) headers.Allow = error.allowedMethod;
-      return withSecurityHeaders(sendApiError(error, requestId, headers), request);
-    }
+  async fetch(request: Request, env: Env, executionContext: ExecutionContext): Promise<Response> {
+    return withSecurityHeaders(await app.fetch(request, env, executionContext), request);
   },
-};
+} satisfies ExportedHandler<Env>;

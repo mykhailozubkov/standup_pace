@@ -1,8 +1,9 @@
-import { AppError, mapNetworkError, mapOpenRouterError } from "./errors.mjs";
+import { AppError, mapNetworkError, mapOpenRouterError } from "./errors.ts";
+import type { Env } from "./env.ts";
 
 const DEFAULT_MODEL = "dots-studio/dots-3-note-preview:free";
 
-function retryAfterSeconds(value) {
+function retryAfterSeconds(value: string | null) {
   if (!value) return undefined;
   const seconds = Number(value);
   if (Number.isFinite(seconds)) return Math.max(1, Math.min(3600, Math.ceil(seconds)));
@@ -11,7 +12,7 @@ function retryAfterSeconds(value) {
   return Math.max(1, Math.min(3600, Math.ceil((date - Date.now()) / 1000)));
 }
 
-function taskPrompt(kind, recentTasks) {
+function taskPrompt(kind: "current" | "next", recentTasks: string[]) {
   const recent = recentTasks.length
     ? recentTasks.map((task, index) => `${index + 1}. ${task}`).join("\n")
     : "No recent tasks.";
@@ -27,11 +28,14 @@ ${recent}
 Return the same task in natural English and Russian.`;
 }
 
-function parseGeneratedTask(content) {
+function parseGeneratedTask(content: unknown) {
   const normalized = typeof content === "string"
     ? content
     : Array.isArray(content)
-      ? content.map((part) => part?.text || "").join("")
+      ? content.map((part) => {
+        if (!part || typeof part !== "object" || !("text" in part)) return "";
+        return String(part.text || "");
+      }).join("")
       : "";
   const cleaned = normalized.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   const objectStart = cleaned.indexOf("{");
@@ -48,7 +52,13 @@ function parseGeneratedTask(content) {
   return { taskEn, taskRu };
 }
 
-export async function requestOpenRouterTask(env, kind, recentTasks, appOrigin, fetchImpl = fetch) {
+export async function requestOpenRouterTask(
+  env: Env,
+  kind: "current" | "next",
+  recentTasks: string[],
+  appOrigin: string,
+  fetchImpl: typeof fetch = fetch,
+) {
   const apiKey = String(env.OPENROUTER_API_KEY || "").trim();
   const model = String(env.OPENROUTER_MODEL || "").trim() || DEFAULT_MODEL;
   if (!apiKey) throw new AppError("OPENROUTER_NOT_CONFIGURED", 503);
@@ -100,7 +110,14 @@ export async function requestOpenRouterTask(env, kind, recentTasks, appOrigin, f
         }),
       });
 
-      let payload;
+      let payload: {
+        error?: { message?: string };
+        model?: string;
+        choices?: Array<{
+          finish_reason?: string;
+          message?: { refusal?: unknown; content?: unknown };
+        }>;
+      };
       try {
         payload = await response.json();
       } catch {
@@ -117,7 +134,7 @@ export async function requestOpenRouterTask(env, kind, recentTasks, appOrigin, f
       }
 
       const choice = payload.choices?.[0];
-      if (choice?.message?.refusal || ["content_filter", "safety"].includes(choice?.finish_reason)) {
+      if (choice?.message?.refusal || ["content_filter", "safety"].includes(choice?.finish_reason || "")) {
         throw new AppError("OPENROUTER_CONTENT_BLOCKED", 403);
       }
 

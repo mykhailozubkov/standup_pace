@@ -7,7 +7,7 @@ import {
   SESSION_TTL_SECONDS,
   sessionCookie,
   verifyAdminCredentials,
-} from "../src/auth.mjs";
+} from "../src/auth.ts";
 
 const env = {
   ADMIN_USERNAME: "facilitator",

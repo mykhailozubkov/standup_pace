@@ -1,5 +1,15 @@
+interface AppErrorOptions extends ErrorOptions {
+  retryable?: boolean;
+}
+
 export class AppError extends Error {
-  constructor(code, status = 500, options = {}) {
+  readonly code: string;
+  readonly status: number;
+  readonly retryable: boolean;
+  retryAfterSeconds?: number;
+  allowedMethod?: string;
+
+  constructor(code: string, status = 500, options: AppErrorOptions = {}) {
     super(code, options);
     this.name = "AppError";
     this.code = code;
@@ -8,10 +18,10 @@ export class AppError extends Error {
   }
 }
 
-export function mapOpenRouterError(status, message = "") {
+export function mapOpenRouterError(status: number, message = "") {
   const normalizedMessage = String(message).toLowerCase();
   const contentBlocked = /guardrail|content.?filter|moderation|unsafe|blocked/.test(normalizedMessage);
-  const mappings = {
+  const mappings: Record<number, readonly [string, boolean]> = {
     400: ["OPENROUTER_BAD_REQUEST", false],
     401: ["OPENROUTER_AUTH_ERROR", false],
     402: ["OPENROUTER_PAYMENT_REQUIRED", false],
@@ -37,12 +47,15 @@ export function mapOpenRouterError(status, message = "") {
   return new AppError(code, status >= 400 && status <= 599 ? status : 502, { retryable });
 }
 
-export function mapNetworkError(error) {
-  if (error?.name === "AbortError") {
+export function mapNetworkError(error: unknown) {
+  const candidate = error && typeof error === "object"
+    ? error as { name?: string; code?: string; cause?: { code?: string } }
+    : {};
+  if (candidate.name === "AbortError") {
     return new AppError("OPENROUTER_TIMEOUT", 504, { retryable: true });
   }
 
-  const causeCode = error?.cause?.code || error?.code;
+  const causeCode = candidate.cause?.code || candidate.code || "";
   if (["ENOTFOUND", "EAI_AGAIN"].includes(causeCode)) {
     return new AppError("OPENROUTER_DNS_ERROR", 502, { retryable: true });
   }
@@ -55,7 +68,7 @@ export function mapNetworkError(error) {
   return new AppError("OPENROUTER_NETWORK_ERROR", 502, { retryable: true });
 }
 
-export function publicStatusForError(error) {
+export function publicStatusForError(error: unknown) {
   if (error instanceof AppError && Number.isInteger(error.status)) return error.status;
   return 500;
 }

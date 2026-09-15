@@ -5,17 +5,18 @@
 ## Архитектура первого этапа
 
 - `public/` — HTML, CSS и клиентский JavaScript.
-- `src/worker.mjs` — маршрутизация, авторизация и Worker API.
-- `src/auth.mjs` — вход администратора и подписанная cookie-сессия на 24 часа.
-- `src/openrouter.mjs` — генерация заданий через OpenRouter.
-- `src/errors.mjs` — безопасная классификация ошибок.
+- `src/worker.ts` — типизированная Hono-маршрутизация, авторизация и Worker API.
+- `src/auth.ts` — вход администратора и подписанная cookie-сессия на 24 часа.
+- `src/openrouter.ts` — генерация заданий через OpenRouter.
+- `src/errors.ts` — безопасная классификация ошибок.
+- `src/env.ts` — типы Cloudflare bindings и переменных окружения.
 - `wrangler.jsonc` — конфигурация Cloudflare Worker `standup-helper`.
 
 На этом этапе D1 не используется. Участники, история, таймер и циклы жеребьёвки по-прежнему хранятся в `localStorage` браузера администратора.
 
 ## Локальный запуск
 
-Потребуются Node.js и API-ключ со страницы [OpenRouter Keys](https://openrouter.ai/settings/keys).
+Потребуются Node.js 22.6 или новее и API-ключ со страницы [OpenRouter Keys](https://openrouter.ai/settings/keys).
 
 Установите зависимости:
 

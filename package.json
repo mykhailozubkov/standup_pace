@@ -6,10 +6,15 @@
   "scripts": {
     "dev": "wrangler dev --config wrangler.jsonc",
     "deploy": "wrangler deploy --config wrangler.jsonc",
-    "check": "node --check src/worker.mjs && node --check src/auth.mjs && node --check src/openrouter.mjs && node --check public/app.js && node --check public/login.js",
-    "test": "node --test"
+    "check": "tsc --noEmit && node --check public/app.js && node --check public/login.js",
+    "test": "node --experimental-strip-types --test"
+  },
+  "dependencies": {
+    "hono": "^4.13.8"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260915.1",
+    "typescript": "^7.0.2",
     "wrangler": "^4.34.0"
   }
 }

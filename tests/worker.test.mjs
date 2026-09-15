@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker from "../src/worker.mjs";
+import worker from "../src/worker.ts";
 
 const env = {
   ADMIN_USERNAME: "facilitator",
@@ -69,4 +69,11 @@ test("clears the administrator session on logout", async () => {
   const response = await worker.fetch(request("/api/auth/logout", { method: "POST" }), env);
   assert.equal(response.status, 200);
   assert.match(response.headers.get("set-cookie"), /Max-Age=0/);
+});
+
+test("returns explicit method guards through Hono routes", async () => {
+  const response = await worker.fetch(request("/api/auth/session", { method: "POST" }), env);
+  assert.equal(response.status, 405);
+  assert.equal(response.headers.get("allow"), "GET");
+  assert.equal(response.headers.get("x-frame-options"), "DENY");
 });

@@ -1,32 +1,33 @@
-import { AppError } from "./errors.mjs";
+import { AppError } from "./errors.ts";
+import type { Env } from "./env.ts";
 
 export const SESSION_TTL_SECONDS = 24 * 60 * 60;
 export const SESSION_COOKIE_NAME = "standup_helper_session";
 
 const encoder = new TextEncoder();
 
-function bytesToBase64Url(bytes) {
+function bytesToBase64Url(bytes: Uint8Array) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-function stringToBase64Url(value) {
+function stringToBase64Url(value: string) {
   return bytesToBase64Url(encoder.encode(value));
 }
 
-function base64UrlToString(value) {
+function base64UrlToString(value: string) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   const padding = "=".repeat((4 - (normalized.length % 4)) % 4);
   const binary = atob(normalized + padding);
   return new TextDecoder().decode(Uint8Array.from(binary, (character) => character.charCodeAt(0)));
 }
 
-async function sha256(value) {
+async function sha256(value: string) {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(value)));
 }
 
-async function constantTimeTextEqual(left, right) {
+async function constantTimeTextEqual(left: string, right: string) {
   const [leftHash, rightHash] = await Promise.all([sha256(left), sha256(right)]);
   let difference = 0;
   for (let index = 0; index < leftHash.length; index += 1) {
@@ -35,7 +36,7 @@ async function constantTimeTextEqual(left, right) {
   return difference === 0;
 }
 
-function requireAuthConfiguration(env) {
+function requireAuthConfiguration(env: Env) {
   const username = String(env.ADMIN_USERNAME || "").trim();
   const password = String(env.ADMIN_PASSWORD || "");
   const sessionSecret = String(env.SESSION_SECRET || "");
@@ -45,7 +46,7 @@ function requireAuthConfiguration(env) {
   return { username, password, sessionSecret };
 }
 
-async function sign(value, secret) {
+async function sign(value: string, secret: string) {
   const key = await crypto.subtle.importKey(
     "raw",
     encoder.encode(secret),
@@ -56,7 +57,7 @@ async function sign(value, secret) {
   return bytesToBase64Url(new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(value))));
 }
 
-function readCookie(request, name) {
+function readCookie(request: Request, name: string) {
   const header = request.headers.get("Cookie") || "";
   for (const item of header.split(";")) {
     const separator = item.indexOf("=");
@@ -67,7 +68,7 @@ function readCookie(request, name) {
   return "";
 }
 
-export async function verifyAdminCredentials(env, username, password) {
+export async function verifyAdminCredentials(env: Env, username: unknown, password: unknown) {
   const configured = requireAuthConfiguration(env);
   const safeUsername = typeof username === "string" ? username.trim() : "";
   const safePassword = typeof password === "string" ? password : "";
@@ -80,7 +81,7 @@ export async function verifyAdminCredentials(env, username, password) {
   return usernameMatches && passwordMatches;
 }
 
-export async function createSessionToken(env, now = Date.now()) {
+export async function createSessionToken(env: Env, now = Date.now()) {
   const { username, sessionSecret } = requireAuthConfiguration(env);
   const payload = stringToBase64Url(JSON.stringify({
     version: 1,
@@ -90,7 +91,7 @@ export async function createSessionToken(env, now = Date.now()) {
   return `${payload}.${await sign(payload, sessionSecret)}`;
 }
 
-export async function hasValidSession(request, env, now = Date.now()) {
+export async function hasValidSession(request: Request, env: Env, now = Date.now()) {
   try {
     const { username, sessionSecret } = requireAuthConfiguration(env);
     const token = readCookie(request, SESSION_COOKIE_NAME);
@@ -113,21 +114,21 @@ export async function hasValidSession(request, env, now = Date.now()) {
   }
 }
 
-function isSecureRequest(request) {
+function isSecureRequest(request: Request) {
   const url = new URL(request.url);
   return url.protocol === "https:" && !["localhost", "127.0.0.1"].includes(url.hostname);
 }
 
-export function sessionCookie(token, request) {
+export function sessionCookie(token: string, request: Request) {
   const secure = isSecureRequest(request) ? "; Secure" : "";
   return `${SESSION_COOKIE_NAME}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL_SECONDS}${secure}`;
 }
 
-export function expiredSessionCookie(request) {
+export function expiredSessionCookie(request: Request) {
   const secure = isSecureRequest(request) ? "; Secure" : "";
   return `${SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`;
 }
 
-export function requireValidSession(valid) {
+export function requireValidSession(valid: boolean) {
   if (!valid) throw new AppError("AUTH_REQUIRED", 401);
 }
