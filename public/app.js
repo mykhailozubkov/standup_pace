@@ -756,7 +756,11 @@ async function logout() {
   els.logoutButton.disabled = true;
   els.logoutButton.textContent = tr("loggingOut");
   try {
-    const response = await fetch("/api/auth/logout", { method: "POST" });
+    const response = await fetch("/api/auth/sign-out", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
     if (!response.ok) throw new Error("LOGOUT_FAILED");
     window.location.replace("/");
   } catch {

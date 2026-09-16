@@ -1,12 +1,9 @@
 import { Hono } from "hono";
 import { AppError, publicStatusForError } from "./errors.ts";
 import {
-  createSessionToken,
-  expiredSessionCookie,
-  hasValidSession,
-  requireValidSession,
-  sessionCookie,
-  verifyAdminCredentials,
+  createAuth,
+  getAuthSession,
+  requireAuthSession,
 } from "./auth.ts";
 import type { Env } from "./env.ts";
 import { requestOpenRouterTask } from "./openrouter.ts";
@@ -91,37 +88,23 @@ function requireMethod(request: Request, method: string) {
 
 async function sessionState(request: Request, env: Env) {
   try {
-    return { authenticated: await hasValidSession(request, env), configured: true };
+    const session = await getAuthSession(request, env);
+    return {
+      authenticated: Boolean(session),
+      configured: true,
+      user: session?.user || null,
+    };
   } catch (error) {
     if (error instanceof AppError && error.code === "AUTH_NOT_CONFIGURED") {
-      return { authenticated: false, configured: false };
+      return { authenticated: false, configured: false, user: null };
     }
     throw error;
   }
 }
 
-async function handleLogin(request: Request, env: Env) {
-  requireMethod(request, "POST");
-  const body = await readJson(request, 2_048);
-  const valid = await verifyAdminCredentials(env, body.username, body.password);
-  if (!valid) throw new AppError("INVALID_CREDENTIALS", 401);
-
-  const token = await createSessionToken(env);
-  return sendJson(200, { authenticated: true }, {
-    "Set-Cookie": sessionCookie(token, request),
-  });
-}
-
-async function handleLogout(request: Request) {
-  requireMethod(request, "POST");
-  return sendJson(200, { authenticated: false }, {
-    "Set-Cookie": expiredSessionCookie(request),
-  });
-}
-
 async function handleTask(request: Request, env: Env) {
   requireMethod(request, "POST");
-  requireValidSession(await hasValidSession(request, env));
+  await requireAuthSession(request, env);
 
   const body = await readJson(request);
   if (body.kind !== "current" && body.kind !== "next") {
@@ -183,16 +166,9 @@ function methodNotAllowed(method: string): never {
 
 const app = new Hono<AppContext>();
 
-app.get("/api/auth/session", async (context) => (
-  sendJson(200, await sessionState(context.req.raw, context.env))
+app.all("/api/auth/*", (context) => (
+  createAuth(context.env, context.req.raw).handler(context.req.raw)
 ));
-app.all("/api/auth/session", () => methodNotAllowed("GET"));
-
-app.post("/api/auth/login", (context) => handleLogin(context.req.raw, context.env));
-app.all("/api/auth/login", () => methodNotAllowed("POST"));
-
-app.post("/api/auth/logout", (context) => handleLogout(context.req.raw));
-app.all("/api/auth/logout", () => methodNotAllowed("POST"));
 
 app.post("/api/task", (context) => handleTask(context.req.raw, context.env));
 app.all("/api/task", () => methodNotAllowed("POST"));

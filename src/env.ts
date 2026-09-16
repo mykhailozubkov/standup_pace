@@ -1,8 +1,8 @@
 export interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
-  ADMIN_USERNAME?: string;
-  ADMIN_PASSWORD?: string;
+  BETTER_AUTH_SECRET?: string;
+  BETTER_AUTH_URL?: string;
   SESSION_SECRET?: string;
   OPENROUTER_API_KEY?: string;
   OPENROUTER_MODEL?: string;

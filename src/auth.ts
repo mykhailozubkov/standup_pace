@@ -1,134 +1,75 @@
+import { betterAuth } from "better-auth";
 import { AppError } from "./errors.ts";
 import type { Env } from "./env.ts";
 
 export const SESSION_TTL_SECONDS = 24 * 60 * 60;
-export const SESSION_COOKIE_NAME = "standup_helper_session";
 
-const encoder = new TextEncoder();
-
-function bytesToBase64Url(bytes: Uint8Array) {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+function isLocalOrigin(origin: string) {
+  const hostname = new URL(origin).hostname;
+  return hostname === "localhost" || hostname === "127.0.0.1";
 }
 
-function stringToBase64Url(value: string) {
-  return bytesToBase64Url(encoder.encode(value));
+function authSecret(env: Env) {
+  // SESSION_SECRET keeps existing environments compatible until the dedicated
+  // Better Auth secret is configured everywhere.
+  const secret = String(env.BETTER_AUTH_SECRET || env.SESSION_SECRET || "");
+  if (secret.length < 32) throw new AppError("AUTH_NOT_CONFIGURED", 503);
+  return secret;
 }
 
-function base64UrlToString(value: string) {
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padding = "=".repeat((4 - (normalized.length % 4)) % 4);
-  const binary = atob(normalized + padding);
-  return new TextDecoder().decode(Uint8Array.from(binary, (character) => character.charCodeAt(0)));
+function authBaseURL(request: Request, env: Env) {
+  const requestOrigin = new URL(request.url).origin;
+  if (isLocalOrigin(requestOrigin)) return requestOrigin;
+  return String(env.BETTER_AUTH_URL || env.PUBLIC_APP_URL || requestOrigin).replace(/\/$/, "");
 }
 
-async function sha256(value: string) {
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(value)));
+export function createAuth(env: Env, request: Request) {
+  const baseURL = authBaseURL(request, env);
+
+  return betterAuth({
+    appName: "Standup Helper",
+    database: env.DB,
+    secret: authSecret(env),
+    baseURL,
+    trustedOrigins: [baseURL],
+    emailAndPassword: {
+      enabled: true,
+      minPasswordLength: 12,
+      maxPasswordLength: 128,
+      autoSignIn: true,
+    },
+    session: {
+      expiresIn: SESSION_TTL_SECONDS,
+      updateAge: 60 * 60,
+    },
+    rateLimit: {
+      enabled: true,
+      window: 60,
+      max: 100,
+      storage: "database",
+      customRules: {
+        "/sign-in/email": { window: 60, max: 10 },
+        "/sign-up/email": { window: 60, max: 5 },
+      },
+    },
+    advanced: {
+      cookiePrefix: "standup_helper",
+      useSecureCookies: !isLocalOrigin(baseURL),
+      ipAddress: {
+        ipAddressHeaders: ["cf-connecting-ip"],
+      },
+    },
+  });
 }
 
-async function constantTimeTextEqual(left: string, right: string) {
-  const [leftHash, rightHash] = await Promise.all([sha256(left), sha256(right)]);
-  let difference = 0;
-  for (let index = 0; index < leftHash.length; index += 1) {
-    difference |= leftHash[index] ^ rightHash[index];
-  }
-  return difference === 0;
+export async function getAuthSession(request: Request, env: Env) {
+  return createAuth(env, request).api.getSession({
+    headers: request.headers,
+  });
 }
 
-function requireAuthConfiguration(env: Env) {
-  const username = String(env.ADMIN_USERNAME || "").trim();
-  const password = String(env.ADMIN_PASSWORD || "");
-  const sessionSecret = String(env.SESSION_SECRET || "");
-  if (!username || password.length < 12 || sessionSecret.length < 32) {
-    throw new AppError("AUTH_NOT_CONFIGURED", 503);
-  }
-  return { username, password, sessionSecret };
-}
-
-async function sign(value: string, secret: string) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  return bytesToBase64Url(new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(value))));
-}
-
-function readCookie(request: Request, name: string) {
-  const header = request.headers.get("Cookie") || "";
-  for (const item of header.split(";")) {
-    const separator = item.indexOf("=");
-    if (separator < 0) continue;
-    const key = item.slice(0, separator).trim();
-    if (key === name) return item.slice(separator + 1).trim();
-  }
-  return "";
-}
-
-export async function verifyAdminCredentials(env: Env, username: unknown, password: unknown) {
-  const configured = requireAuthConfiguration(env);
-  const safeUsername = typeof username === "string" ? username.trim() : "";
-  const safePassword = typeof password === "string" ? password : "";
-  if (safeUsername.length > 128 || safePassword.length > 512) return false;
-
-  const [usernameMatches, passwordMatches] = await Promise.all([
-    constantTimeTextEqual(safeUsername, configured.username),
-    constantTimeTextEqual(safePassword, configured.password),
-  ]);
-  return usernameMatches && passwordMatches;
-}
-
-export async function createSessionToken(env: Env, now = Date.now()) {
-  const { username, sessionSecret } = requireAuthConfiguration(env);
-  const payload = stringToBase64Url(JSON.stringify({
-    version: 1,
-    subject: username,
-    expiresAt: Math.floor(now / 1000) + SESSION_TTL_SECONDS,
-  }));
-  return `${payload}.${await sign(payload, sessionSecret)}`;
-}
-
-export async function hasValidSession(request: Request, env: Env, now = Date.now()) {
-  try {
-    const { username, sessionSecret } = requireAuthConfiguration(env);
-    const token = readCookie(request, SESSION_COOKIE_NAME);
-    if (!token || token.length > 2048) return false;
-
-    const parts = token.split(".");
-    if (parts.length !== 2) return false;
-    const [payload, providedSignature] = parts;
-    const expectedSignature = await sign(payload, sessionSecret);
-    if (!(await constantTimeTextEqual(providedSignature, expectedSignature))) return false;
-
-    const session = JSON.parse(base64UrlToString(payload));
-    return session.version === 1
-      && session.subject === username
-      && Number.isInteger(session.expiresAt)
-      && session.expiresAt > Math.floor(now / 1000);
-  } catch (error) {
-    if (error instanceof AppError) throw error;
-    return false;
-  }
-}
-
-function isSecureRequest(request: Request) {
-  const url = new URL(request.url);
-  return url.protocol === "https:" && !["localhost", "127.0.0.1"].includes(url.hostname);
-}
-
-export function sessionCookie(token: string, request: Request) {
-  const secure = isSecureRequest(request) ? "; Secure" : "";
-  return `${SESSION_COOKIE_NAME}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL_SECONDS}${secure}`;
-}
-
-export function expiredSessionCookie(request: Request) {
-  const secure = isSecureRequest(request) ? "; Secure" : "";
-  return `${SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`;
-}
-
-export function requireValidSession(valid: boolean) {
-  if (!valid) throw new AppError("AUTH_REQUIRED", 401);
+export async function requireAuthSession(request: Request, env: Env) {
+  const session = await getAuthSession(request, env);
+  if (!session) throw new AppError("AUTH_REQUIRED", 401);
+  return session;
 }

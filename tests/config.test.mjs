@@ -10,4 +10,6 @@ test("keeps Worker routing in control of protected HTML pages", async () => {
   assert.equal(config.assets?.run_worker_first, true);
   assert.equal(config.assets?.html_handling, "none");
   assert.equal(config.workers_dev, true);
+  assert.ok(config.compatibility_flags.includes("nodejs_compat"));
+  assert.equal(config.d1_databases?.[0]?.binding, "DB");
 });

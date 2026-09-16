@@ -9,14 +9,17 @@
     "db:migrate:local": "wrangler d1 migrations apply DB --local --config wrangler.jsonc",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote --config wrangler.jsonc",
     "db:migrations:list": "wrangler d1 migrations list DB --remote --config wrangler.jsonc",
+    "auth:schema": "auth generate --config better-auth.schema.ts --output .wrangler-auth-schema.sql --yes",
     "check": "tsc --noEmit && node --check public/app.js && node --check public/login.js",
     "test": "node --experimental-strip-types --test"
   },
   "dependencies": {
+    "better-auth": "1.7.5",
     "hono": "^4.13.8"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260915.1",
+    "auth": "1.7.5",
     "typescript": "^7.0.2",
     "wrangler": "^4.34.0"
   }

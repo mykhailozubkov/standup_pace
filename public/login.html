@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Sign in to the Standup Helper admin workspace" />
-    <title>Standup Helper — admin sign in</title>
+    <meta name="description" content="Sign in or create a Standup Helper account" />
+    <title>Standup Helper — sign in</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -32,23 +32,33 @@
 
         <section class="login-card" aria-labelledby="loginTitle">
           <div class="login-card-heading">
-            <p class="section-kicker" data-i18n="adminArea">Admin area</p>
+            <p class="section-kicker" data-i18n="accountArea">Your workspace</p>
             <h2 id="loginTitle" data-i18n="signIn">Sign in</h2>
-            <p data-i18n="signInCopy">Use the administrator credentials configured for this deployment.</p>
+            <p id="authModeCopy" data-i18n="signInCopy">Use your email and password to continue.</p>
+          </div>
+
+          <div class="auth-mode-switch" role="group" aria-label="Authentication mode">
+            <button type="button" class="active" data-auth-mode="signIn" data-i18n="signIn">Sign in</button>
+            <button type="button" data-auth-mode="signUp" data-i18n="createAccount">Create account</button>
           </div>
 
           <form id="loginForm" novalidate>
-            <label for="usernameInput" data-i18n="username">Username</label>
-            <input id="usernameInput" name="username" type="text" maxlength="128" autocomplete="username" required />
+            <div id="nameField" class="auth-field" hidden>
+              <label for="nameInput" data-i18n="displayName">Display name</label>
+              <input id="nameInput" name="name" type="text" maxlength="80" autocomplete="name" />
+            </div>
+
+            <label for="emailInput" data-i18n="email">Email</label>
+            <input id="emailInput" name="email" type="email" maxlength="254" autocomplete="email" required />
 
             <label for="passwordInput" data-i18n="password">Password</label>
-            <input id="passwordInput" name="password" type="password" maxlength="512" autocomplete="current-password" required />
+            <input id="passwordInput" name="password" type="password" minlength="12" maxlength="128" autocomplete="current-password" required />
 
             <p id="loginMessage" class="login-message" role="alert" aria-live="polite"></p>
             <button id="loginButton" class="login-button" type="submit" data-i18n="continue">Continue</button>
           </form>
 
-          <p class="login-session-note" data-i18n="sessionNote">Your secure session lasts for 24 hours.</p>
+          <p class="login-session-note" data-i18n="sessionNote">Sessions last 24 hours. Email verification is not required yet.</p>
         </section>
       </main>
     </div>

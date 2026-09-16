@@ -7,5 +7,6 @@ node_modules/
 .wrangler/
 .wrangler-dry-run/
 .wrangler-logs/
+.wrangler-auth-schema.sql
 .xdg-config/
 .xdg-cache/

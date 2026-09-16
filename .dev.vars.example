@@ -1,5 +1,3 @@
 # Copy this file to .dev.vars for local development. Never commit .dev.vars.
-ADMIN_USERNAME=replace-with-your-admin-username
-ADMIN_PASSWORD=replace-with-a-password-of-at-least-12-characters
-SESSION_SECRET=replace-with-a-random-secret-of-at-least-32-characters
+BETTER_AUTH_SECRET=replace-with-a-random-secret-of-at-least-32-characters
 OPENROUTER_API_KEY=sk-or-v1-replace-with-your-key

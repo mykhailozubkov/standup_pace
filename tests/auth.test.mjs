@@ -1,50 +1,72 @@
-import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  createSessionToken,
-  expiredSessionCookie,
-  hasValidSession,
-  SESSION_TTL_SECONDS,
-  sessionCookie,
-  verifyAdminCredentials,
-} from "../src/auth.ts";
+import test from "node:test";
+import { createAuth, getAuthSession, SESSION_TTL_SECONDS } from "../src/auth.ts";
+import { createTestD1 } from "./helpers/d1.mjs";
 
-const env = {
-  ADMIN_USERNAME: "facilitator",
-  ADMIN_PASSWORD: "correct horse battery staple",
-  SESSION_SECRET: "a-test-session-secret-that-is-longer-than-32-characters",
-};
+const baseURL = "https://standup-helper.example";
 
-test("validates both parts of the administrator credentials", async () => {
-  assert.equal(await verifyAdminCredentials(env, "facilitator", "correct horse battery staple"), true);
-  assert.equal(await verifyAdminCredentials(env, "other", "correct horse battery staple"), false);
-  assert.equal(await verifyAdminCredentials(env, "facilitator", "wrong password"), false);
+async function testEnv() {
+  return {
+    DB: await createTestD1(),
+    BETTER_AUTH_SECRET: "a-test-better-auth-secret-that-is-longer-than-32-characters",
+    PUBLIC_APP_URL: baseURL,
+  };
+}
+
+function request(path, options = {}) {
+  const headers = new Headers(options.headers);
+  headers.set("cf-connecting-ip", "203.0.113.10");
+  return new Request(`${baseURL}${path}`, { ...options, headers });
+}
+
+test("requires a high-entropy authentication secret", async () => {
+  const env = await testEnv();
+  env.BETTER_AUTH_SECRET = "too-short";
+  assert.throws(() => createAuth(env, request("/")), /AUTH_NOT_CONFIGURED/);
 });
 
-test("creates a session that expires after 24 hours", async () => {
-  const now = Date.UTC(2026, 8, 11, 12, 0, 0);
-  const token = await createSessionToken(env, now);
-  const request = new Request("http://localhost/admin", {
-    headers: { Cookie: sessionCookie(token, new Request("http://localhost/")) },
-  });
+test("creates a D1-backed account, profile and 24 hour session", async () => {
+  const env = await testEnv();
+  const auth = createAuth(env, request("/api/auth/sign-up/email"));
+  const response = await auth.handler(request("/api/auth/sign-up/email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      password: "correct horse battery staple",
+    }),
+  }));
 
-  assert.equal(await hasValidSession(request, env, now + 1_000), true);
-  assert.equal(await hasValidSession(request, env, now + SESSION_TTL_SECONDS * 1_000 + 1), false);
+  assert.equal(response.status, 200);
+  const cookie = response.headers.get("set-cookie");
+  assert.match(cookie, /standup_helper\.session_token=/);
+  assert.match(cookie, /Max-Age=86400/);
+  assert.equal(SESSION_TTL_SECONDS, 86_400);
+
+  const [profile] = env.DB.query(
+    "SELECT display_name FROM user_profiles WHERE user_id = (SELECT id FROM user WHERE email = ?)",
+    "ada@example.com",
+  );
+  assert.deepEqual(profile, { display_name: "Ada Lovelace" });
+  assert.ok(env.DB.query('SELECT COUNT(*) AS count FROM "rateLimit"')[0].count > 0);
+
+  const cookieHeader = cookie.split(";")[0];
+  const session = await getAuthSession(request("/admin", {
+    headers: { Cookie: cookieHeader },
+  }), env);
+  assert.equal(session.user.email, "ada@example.com");
 });
 
-test("rejects a modified session token", async () => {
-  const token = await createSessionToken(env);
-  const request = new Request("https://standup-helper.example/admin", {
-    headers: { Cookie: `standup_helper_session=${token.slice(0, -1)}x` },
-  });
-  assert.equal(await hasValidSession(request, env), false);
-});
+test("rejects short passwords", async () => {
+  const env = await testEnv();
+  const auth = createAuth(env, request("/api/auth/sign-up/email"));
+  const response = await auth.handler(request("/api/auth/sign-up/email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Ada", email: "ada@example.com", password: "too-short" }),
+  }));
 
-test("uses secure production cookies and clears sessions", async () => {
-  const token = await createSessionToken(env);
-  const productionRequest = new Request("https://standup-helper.example/");
-  assert.match(sessionCookie(token, productionRequest), /HttpOnly/);
-  assert.match(sessionCookie(token, productionRequest), /Secure/);
-  assert.match(sessionCookie(token, productionRequest), /Max-Age=86400/);
-  assert.match(expiredSessionCookie(productionRequest), /Max-Age=0/);
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).code, "PASSWORD_TOO_SHORT");
 });
