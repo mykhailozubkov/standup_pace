@@ -42,15 +42,19 @@
               <h2 data-i18n="createRoom">Create a room</h2>
               <p data-i18n="createCopy">You become its owner and can invite participants with a code.</p>
             </div>
-            <label for="roomNameInput" data-i18n="roomName">Room name</label>
-            <input id="roomNameInput" type="text" maxlength="120" autocomplete="off" placeholder="Product standup" data-i18n-placeholder="roomPlaceholder" required />
-            <label for="talkLimitInput" data-i18n="talkLimit">Default talk limit</label>
-            <select id="talkLimitInput">
-              <option value="60">1:00</option>
-              <option value="120" selected>2:00</option>
-              <option value="180">3:00</option>
-              <option value="300">5:00</option>
-            </select>
+            <div class="room-form-field">
+              <label for="roomNameInput" data-i18n="roomName">Room name</label>
+              <input id="roomNameInput" type="text" maxlength="120" autocomplete="off" placeholder="Product standup" data-i18n-placeholder="roomPlaceholder" required />
+            </div>
+            <div class="room-form-field">
+              <label for="talkLimitInput" data-i18n="talkLimit">Default talk limit</label>
+              <select id="talkLimitInput">
+                <option value="60">1:00</option>
+                <option value="120" selected>2:00</option>
+                <option value="180">3:00</option>
+                <option value="300">5:00</option>
+              </select>
+            </div>
             <button class="primary-button" type="submit" data-i18n="create">Create room</button>
             <p class="form-message" data-form-message="create" role="alert"></p>
           </form>
@@ -61,8 +65,10 @@
               <h2 data-i18n="joinRoom">Join a room</h2>
               <p data-i18n="joinCopy">Enter the code shared by the room owner.</p>
             </div>
-            <label for="joinCodeInput" data-i18n="joinCode">Room code</label>
-            <input id="joinCodeInput" class="join-code-input" type="text" maxlength="7" autocomplete="off" placeholder="ABC234" required />
+            <div class="room-form-field">
+              <label for="joinCodeInput" data-i18n="joinCode">Room code</label>
+              <input id="joinCodeInput" class="join-code-input" type="text" maxlength="7" autocomplete="off" placeholder="ABC234" required />
+            </div>
             <button class="secondary-button" type="submit" data-i18n="join">Join room</button>
             <p class="form-message" data-form-message="join" role="alert"></p>
           </form>
