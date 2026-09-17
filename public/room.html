@@ -57,6 +57,21 @@
             </article>
 
             <aside class="room-side-stack">
+              <article id="meetingCard" class="panel room-meeting-card">
+                <p class="section-kicker" data-i18n="standup">Standup</p>
+                <div class="meeting-status-line">
+                  <span id="meetingStatusDot" class="meeting-status-dot"></span>
+                  <span id="meetingStatus"></span>
+                </div>
+                <h2 id="meetingTitle"></h2>
+                <strong id="meetingElapsed" class="meeting-elapsed" hidden></strong>
+                <p id="meetingCopy"></p>
+                <div class="meeting-actions">
+                  <button id="meetingActionButton" class="primary-button" type="button" hidden></button>
+                  <button id="refreshMeetingButton" class="text-button" type="button" data-i18n="refreshStatus">Refresh status</button>
+                </div>
+              </article>
+
               <article class="panel room-setting-card">
                 <p class="section-kicker" data-i18n="settings">Settings</p>
                 <h2 data-i18n="defaultTalk">Default talk limit</h2>
@@ -77,7 +92,7 @@
               <article class="panel room-tools-card">
                 <p class="section-kicker" data-i18n="meetingTools">Meeting tools</p>
                 <h2 data-i18n="timerTitle">Speaker timer</h2>
-                <p data-i18n="timerCopy">The current timer still stores its data locally. Room synchronization is the next implementation stage.</p>
+                <p data-i18n="timerCopy">The meeting itself is shared. Speaker timing and speech history are the next server-backed stage.</p>
                 <a class="primary-button room-tool-link" href="/admin" data-i18n="openTimer">Open current timer</a>
               </article>
 
@@ -89,6 +104,16 @@
                 <button id="archiveRoomButton" class="danger-button" type="button" data-i18n="archiveRoom" hidden>Archive room</button>
               </article>
             </aside>
+          </section>
+
+          <section class="panel meeting-history-panel" aria-labelledby="meetingHistoryTitle">
+            <div class="panel-header">
+              <div>
+                <p class="section-kicker" data-i18n="standupHistory">Standup history</p>
+                <h2 id="meetingHistoryTitle" data-i18n="recentMeetings">Recent meetings</h2>
+              </div>
+            </div>
+            <div id="meetingHistoryList" class="meeting-history-list"></div>
           </section>
         </div>
       </main>

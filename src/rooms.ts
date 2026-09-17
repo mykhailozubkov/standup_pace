@@ -373,6 +373,13 @@ export async function archiveRoom(env: Env, roomId: string, actorUserId: string)
   const access = await roomAccessForUser(env, roomId, actorUserId);
   if (access.role !== "owner") throw new AppError("ROOM_FORBIDDEN", 403);
 
+  const activeMeeting = await env.DB.prepare(`
+    SELECT id FROM meetings
+    WHERE room_id = ? AND status = 'active'
+    LIMIT 1
+  `).bind(roomId).all<{ id: string }>();
+  if (activeMeeting.results[0]) throw new AppError("MEETING_ACTIVE", 409);
+
   await env.DB.prepare(`
     UPDATE rooms
     SET status = 'archived', archived_at = unixepoch(), updated_at = unixepoch()

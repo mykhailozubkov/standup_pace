@@ -1,6 +1,7 @@
 const languageKey = "standupHelper.language";
 let language = localStorage.getItem(languageKey) === "ru" ? "ru" : "en";
 let room = null;
+let meetingState = { activeMeeting: null, recentMeetings: [] };
 
 const translations = {
   en: {
@@ -45,9 +46,28 @@ const translations = {
     forbidden: "You do not have permission for this action.",
     conflict: "This action conflicts with the current room state.",
     requestFailed: "The change could not be saved.",
+    standup: "Standup",
+    activeMeeting: "Meeting in progress",
+    noActiveMeeting: "No active meeting",
+    activeMeetingTitle: "The team is meeting now",
+    noActiveMeetingTitle: "Ready for the next standup",
+    startedBy: "Started by",
+    startStandup: "Start standup",
+    endStandup: "Finish standup",
+    refreshStatus: "Refresh status",
+    meetingStarted: "Standup started",
+    meetingEnded: "Standup finished",
+    meetingAlreadyActive: "A standup is already active in this room.",
+    finishMeetingBeforeArchive: "Finish the active standup before archiving this room.",
+    meetingUnavailable: "Meeting status is temporarily unavailable.",
+    standupHistory: "Standup history",
+    recentMeetings: "Recent meetings",
+    noMeetingHistory: "Completed standups will appear here.",
+    completedBy: "Finished by",
+    talkLimitLabel: "Talk limit",
     meetingTools: "Meeting tools",
     timerTitle: "Speaker timer",
-    timerCopy: "The current timer still stores its data locally. Room synchronization is the next implementation stage.",
+    timerCopy: "The meeting itself is shared. Speaker timing and speech history are the next server-backed stage.",
     openTimer: "Open current timer",
     notFound: "This room is unavailable or you are not a member.",
     unavailable: "Could not load the room.",
@@ -94,9 +114,28 @@ const translations = {
     forbidden: "У вас нет прав для этого действия.",
     conflict: "Действие недоступно в текущем состоянии комнаты.",
     requestFailed: "Не удалось сохранить изменение.",
+    standup: "Стендап",
+    activeMeeting: "Встреча идёт",
+    noActiveMeeting: "Нет активной встречи",
+    activeMeetingTitle: "Команда сейчас на встрече",
+    noActiveMeetingTitle: "Можно начинать следующий стендап",
+    startedBy: "Начал(а)",
+    startStandup: "Начать стендап",
+    endStandup: "Завершить стендап",
+    refreshStatus: "Обновить статус",
+    meetingStarted: "Стендап начат",
+    meetingEnded: "Стендап завершён",
+    meetingAlreadyActive: "В этой комнате уже идёт стендап.",
+    finishMeetingBeforeArchive: "Завершите активный стендап перед архивированием комнаты.",
+    meetingUnavailable: "Статус встречи временно недоступен.",
+    standupHistory: "История стендапов",
+    recentMeetings: "Последние встречи",
+    noMeetingHistory: "Завершённые стендапы появятся здесь.",
+    completedBy: "Завершил(а)",
+    talkLimitLabel: "Лимит выступления",
     meetingTools: "Инструменты встречи",
     timerTitle: "Таймер выступлений",
-    timerCopy: "Текущий таймер пока хранит данные локально. Синхронизация с комнатой — следующий этап реализации.",
+    timerCopy: "Сама встреча уже общая. Серверный таймер выступлений и их история появятся на следующем этапе.",
     openTimer: "Открыть текущий таймер",
     notFound: "Комната недоступна или вы не являетесь её участником.",
     unavailable: "Не удалось загрузить комнату.",
@@ -121,6 +160,15 @@ const settingsMessage = document.getElementById("settingsMessage");
 const membershipCopy = document.getElementById("membershipCopy");
 const leaveRoomButton = document.getElementById("leaveRoomButton");
 const archiveRoomButton = document.getElementById("archiveRoomButton");
+const meetingCard = document.getElementById("meetingCard");
+const meetingStatusDot = document.getElementById("meetingStatusDot");
+const meetingStatus = document.getElementById("meetingStatus");
+const meetingTitle = document.getElementById("meetingTitle");
+const meetingElapsed = document.getElementById("meetingElapsed");
+const meetingCopy = document.getElementById("meetingCopy");
+const meetingActionButton = document.getElementById("meetingActionButton");
+const refreshMeetingButton = document.getElementById("refreshMeetingButton");
+const meetingHistoryList = document.getElementById("meetingHistoryList");
 
 function tr(key) {
   return translations[language][key] || key;
@@ -147,6 +195,8 @@ function errorMessage(error) {
   if (error?.code === "INVALID_ROOM_NAME") return tr("invalidRoomName");
   if (error?.code === "INVALID_TALK_LIMIT") return tr("invalidTalkLimit");
   if (error?.code === "ROOM_FORBIDDEN") return tr("forbidden");
+  if (error?.code === "MEETING_ALREADY_ACTIVE") return tr("meetingAlreadyActive");
+  if (error?.code === "MEETING_ACTIVE") return tr("finishMeetingBeforeArchive");
   if (["OWNER_CANNOT_LEAVE", "OWNER_CANNOT_BE_REMOVED", "OWNER_ROLE_IMMUTABLE"].includes(error?.code)) {
     return tr("conflict");
   }
@@ -184,6 +234,7 @@ function applyLanguage(nextLanguage) {
     button.setAttribute("aria-pressed", String(active));
   });
   if (room) renderRoom();
+  if (room) renderMeetingState();
 }
 
 function renderRoom() {
@@ -251,6 +302,79 @@ function renderRoom() {
   });
 }
 
+function formattedDate(epochSeconds) {
+  return new Intl.DateTimeFormat(language === "ru" ? "ru-RU" : "en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(epochSeconds * 1000));
+}
+
+function renderMeetingElapsed() {
+  const activeMeeting = meetingState.activeMeeting;
+  if (!activeMeeting) return;
+  meetingElapsed.textContent = formattedDuration(Math.max(
+    0,
+    Math.floor(Date.now() / 1000) - activeMeeting.startedAt,
+  ));
+}
+
+function renderMeetingState() {
+  const activeMeeting = meetingState.activeMeeting;
+  const canManage = room?.role === "owner" || room?.role === "admin";
+  meetingCard.classList.toggle("active", Boolean(activeMeeting));
+  meetingStatusDot.classList.toggle("active", Boolean(activeMeeting));
+  meetingStatus.textContent = tr(activeMeeting ? "activeMeeting" : "noActiveMeeting");
+  meetingTitle.textContent = tr(activeMeeting ? "activeMeetingTitle" : "noActiveMeetingTitle");
+  meetingElapsed.hidden = !activeMeeting;
+  meetingActionButton.hidden = !canManage;
+  meetingActionButton.dataset.action = activeMeeting ? "end" : "start";
+  meetingActionButton.textContent = tr(activeMeeting ? "endStandup" : "startStandup");
+  meetingActionButton.classList.toggle("meeting-end-button", Boolean(activeMeeting));
+
+  if (activeMeeting) {
+    meetingCopy.textContent = `${tr("startedBy")} ${activeMeeting.startedBy.name} · ${formattedDate(activeMeeting.startedAt)}`;
+    renderMeetingElapsed();
+  } else {
+    meetingCopy.textContent = `${tr("talkLimitLabel")}: ${formattedDuration(room?.defaultTalkLimitSeconds || 0)}`;
+  }
+
+  meetingHistoryList.replaceChildren();
+  if (!meetingState.recentMeetings.length) {
+    const empty = document.createElement("p");
+    empty.className = "meeting-history-empty";
+    empty.textContent = tr("noMeetingHistory");
+    meetingHistoryList.append(empty);
+    return;
+  }
+
+  meetingState.recentMeetings.forEach((meeting) => {
+    const item = document.createElement("div");
+    item.className = "meeting-history-item";
+    const date = document.createElement("strong");
+    date.textContent = formattedDate(meeting.startedAt);
+    const details = document.createElement("small");
+    const duration = formattedDuration(Math.max(0, meeting.endedAt - meeting.startedAt));
+    details.textContent = `${duration} · ${tr("startedBy")} ${meeting.startedBy.name}`;
+    const ender = document.createElement("span");
+    ender.textContent = `${tr("completedBy")} ${meeting.endedBy?.name || meeting.startedBy.name}`;
+    item.append(date, details, ender);
+    meetingHistoryList.append(item);
+  });
+}
+
+async function loadMeetingState(showFailure = true) {
+  try {
+    meetingState = await api(`/api/rooms/${encodeURIComponent(room.id)}/meetings`, {
+      cache: "no-store",
+    });
+    renderMeetingState();
+  } catch (error) {
+    if (showFailure && error?.message !== "AUTH_REQUIRED") {
+      showToast(tr("meetingUnavailable"), true);
+    }
+  }
+}
+
 async function changeMemberRole(member, select) {
   select.disabled = true;
   try {
@@ -301,6 +425,7 @@ async function loadRoom() {
     loading.hidden = true;
     content.hidden = false;
     renderRoom();
+    await loadMeetingState();
   } catch {
     loading.textContent = tr("unavailable");
     loading.classList.add("error-copy");
@@ -328,6 +453,39 @@ roomSettingsForm.addEventListener("submit", async (event) => {
   } finally {
     submitButton.disabled = false;
   }
+});
+
+meetingActionButton.addEventListener("click", async () => {
+  const action = meetingActionButton.dataset.action;
+  meetingActionButton.disabled = true;
+  try {
+    if (action === "end") {
+      const meetingId = meetingState.activeMeeting.id;
+      await api(`/api/rooms/${encodeURIComponent(room.id)}/meetings/${encodeURIComponent(meetingId)}/end`, {
+        method: "POST",
+      });
+      await loadMeetingState(false);
+      showToast(tr("meetingEnded"));
+    } else {
+      const payload = await api(`/api/rooms/${encodeURIComponent(room.id)}/meetings`, {
+        method: "POST",
+      });
+      meetingState.activeMeeting = payload.meeting;
+      renderMeetingState();
+      showToast(tr("meetingStarted"));
+    }
+  } catch (error) {
+    showToast(errorMessage(error), true);
+    if (error?.code === "MEETING_ALREADY_ACTIVE") await loadMeetingState(false);
+  } finally {
+    meetingActionButton.disabled = false;
+  }
+});
+
+refreshMeetingButton.addEventListener("click", async () => {
+  refreshMeetingButton.disabled = true;
+  await loadMeetingState();
+  refreshMeetingButton.disabled = false;
 });
 
 leaveRoomButton.addEventListener("click", async () => {
@@ -373,3 +531,4 @@ document.querySelectorAll("[data-language]").forEach((button) => {
 
 applyLanguage(language);
 loadRoom();
+setInterval(renderMeetingElapsed, 1000);

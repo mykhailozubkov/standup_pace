@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 const migrationUrl = new URL("../migrations/0001_create_rooms.sql", import.meta.url);
 const authMigrationUrl = new URL("../migrations/0002_add_better_auth.sql", import.meta.url);
 const rateLimitMigrationUrl = new URL("../migrations/0003_add_auth_rate_limit.sql", import.meta.url);
+const meetingMigrationUrl = new URL("../migrations/0004_create_meetings.sql", import.meta.url);
 
 test("the initial D1 migration creates the room data model", async () => {
   const database = new DatabaseSync(":memory:");
@@ -101,4 +102,49 @@ test("the Better Auth migration creates auth tables and synchronizes profiles", 
     database.prepare("SELECT display_name FROM user_profiles WHERE user_id = ?").get("auth-user-1").display_name,
     "Grace Hopper",
   );
+});
+
+test("the meeting migration models recurring standups inside a persistent room", async () => {
+  const database = new DatabaseSync(":memory:");
+  database.exec(await readFile(migrationUrl, "utf8"));
+  database.exec(await readFile(meetingMigrationUrl, "utf8"));
+
+  database.prepare(`
+    INSERT INTO user_profiles (user_id, display_name) VALUES (?, ?)
+  `).run("user-1", "Ada");
+  database.prepare(`
+    INSERT INTO rooms (id, owner_user_id, name, join_code)
+    VALUES (?, ?, ?, ?)
+  `).run("room-1", "user-1", "Platform", "ROOM42");
+
+  database.prepare(`
+    INSERT INTO meetings (id, room_id, talk_limit_seconds, started_by_user_id)
+    VALUES (?, ?, ?, ?)
+  `).run("meeting-1", "room-1", 120, "user-1");
+
+  assert.throws(() => database.prepare(`
+    INSERT INTO meetings (id, room_id, talk_limit_seconds, started_by_user_id)
+    VALUES (?, ?, ?, ?)
+  `).run("meeting-2", "room-1", 120, "user-1"), /UNIQUE/);
+
+  database.prepare(`
+    UPDATE meetings
+    SET status = 'completed', ended_by_user_id = ?, ended_at = unixepoch()
+    WHERE id = ?
+  `).run("user-1", "meeting-1");
+  database.prepare(`
+    INSERT INTO meetings (id, room_id, talk_limit_seconds, started_by_user_id)
+    VALUES (?, ?, ?, ?)
+  `).run("meeting-2", "room-1", 120, "user-1");
+
+  assert.throws(() => database.prepare(`
+    UPDATE meetings SET status = 'completed' WHERE id = ?
+  `).run("meeting-2"), /CHECK/);
+
+  const indexes = database.prepare(`
+    SELECT name FROM sqlite_schema
+    WHERE type = 'index' AND name LIKE 'meetings_%'
+    ORDER BY name
+  `).all().map(({ name }) => name);
+  assert.deepEqual(indexes, ["meetings_history_by_room", "meetings_one_active_per_room"]);
 });

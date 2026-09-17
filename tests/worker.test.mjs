@@ -155,6 +155,34 @@ test("manages room settings, roles, membership, and archiving through the API", 
   assert.equal(settingsResponse.status, 200);
   assert.equal((await settingsResponse.json()).room.name, "Updated standup");
 
+  const startMeetingResponse = await worker.fetch(request(`/api/rooms/${created.id}/meetings`, {
+    method: "POST",
+    headers: { Cookie: memberCookie },
+  }), env);
+  assert.equal(startMeetingResponse.status, 201);
+  const meeting = (await startMeetingResponse.json()).meeting;
+  assert.equal(meeting.status, "active");
+
+  const meetingStateResponse = await worker.fetch(request(`/api/rooms/${created.id}/meetings`, {
+    headers: { Cookie: ownerCookie },
+  }), env);
+  assert.equal(meetingStateResponse.status, 200);
+  assert.equal((await meetingStateResponse.json()).activeMeeting.id, meeting.id);
+
+  const duplicateMeetingResponse = await worker.fetch(request(`/api/rooms/${created.id}/meetings`, {
+    method: "POST",
+    headers: { Cookie: ownerCookie },
+  }), env);
+  assert.equal(duplicateMeetingResponse.status, 409);
+  assert.equal((await duplicateMeetingResponse.json()).code, "MEETING_ALREADY_ACTIVE");
+
+  const endMeetingResponse = await worker.fetch(request(
+    `/api/rooms/${created.id}/meetings/${meeting.id}/end`,
+    { method: "POST", headers: { Cookie: ownerCookie } },
+  ), env);
+  assert.equal(endMeetingResponse.status, 200);
+  assert.equal((await endMeetingResponse.json()).meeting.status, "completed");
+
   const leaveResponse = await worker.fetch(request(`/api/rooms/${created.id}/members/${memberId}`, {
     method: "DELETE",
     headers: { Cookie: memberCookie },
@@ -229,4 +257,8 @@ test("keeps explicit method guards and security headers", async () => {
   const room = await worker.fetch(request("/api/rooms/room-id", { method: "POST" }), env);
   assert.equal(room.status, 405);
   assert.equal(room.headers.get("allow"), "GET, PATCH");
+
+  const meetings = await worker.fetch(request("/api/rooms/room-id/meetings", { method: "PUT" }), env);
+  assert.equal(meetings.status, 405);
+  assert.equal(meetings.headers.get("allow"), "GET, POST");
 });

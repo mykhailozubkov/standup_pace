@@ -7,6 +7,7 @@ import {
 } from "./auth.ts";
 import type { Env } from "./env.ts";
 import { requestOpenRouterTask } from "./openrouter.ts";
+import { endMeeting, listMeetings, startMeeting } from "./meetings.ts";
 import {
   archiveRoom,
   createRoom,
@@ -196,6 +197,28 @@ async function handleArchiveRoom(request: Request, env: Env, roomId: string) {
   return sendJson(200, await archiveRoom(env, roomId, session.user.id));
 }
 
+async function handleListMeetings(request: Request, env: Env, roomId: string) {
+  const session = await requireAuthSession(request, env);
+  return sendJson(200, await listMeetings(env, roomId, session.user.id));
+}
+
+async function handleStartMeeting(request: Request, env: Env, roomId: string) {
+  const session = await requireAuthSession(request, env);
+  return sendJson(201, { meeting: await startMeeting(env, roomId, session.user.id) });
+}
+
+async function handleEndMeeting(
+  request: Request,
+  env: Env,
+  roomId: string,
+  meetingId: string,
+) {
+  const session = await requireAuthSession(request, env);
+  return sendJson(200, {
+    meeting: await endMeeting(env, roomId, meetingId, session.user.id),
+  });
+}
+
 async function assetResponse(env: Env, request: Request, pathname: string) {
   const assetUrl = new URL(request.url);
   assetUrl.pathname = pathname;
@@ -284,6 +307,26 @@ app.post("/api/rooms/:roomId/archive", (context) => handleArchiveRoom(
   context.req.param("roomId"),
 ));
 app.all("/api/rooms/:roomId/archive", () => methodNotAllowed("POST"));
+
+app.post("/api/rooms/:roomId/meetings/:meetingId/end", (context) => handleEndMeeting(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+  context.req.param("meetingId"),
+));
+app.all("/api/rooms/:roomId/meetings/:meetingId/end", () => methodNotAllowed("POST"));
+
+app.get("/api/rooms/:roomId/meetings", (context) => handleListMeetings(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+));
+app.post("/api/rooms/:roomId/meetings", (context) => handleStartMeeting(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+));
+app.all("/api/rooms/:roomId/meetings", () => methodNotAllowed("GET, POST"));
 
 app.get("/api/rooms/:roomId", (context) => handleGetRoom(
   context.req.raw,
