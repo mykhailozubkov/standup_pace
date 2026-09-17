@@ -2,6 +2,7 @@ const languageKey = "standupHelper.language";
 let language = localStorage.getItem(languageKey) === "ru" ? "ru" : "en";
 let room = null;
 let meetingState = { activeMeeting: null, recentMeetings: [] };
+let speechState = { activeSpeech: null, recentSpeeches: [] };
 
 const translations = {
   en: {
@@ -65,10 +66,27 @@ const translations = {
     noMeetingHistory: "Completed standups will appear here.",
     completedBy: "Finished by",
     talkLimitLabel: "Talk limit",
-    meetingTools: "Meeting tools",
-    timerTitle: "Speaker timer",
-    timerCopy: "The meeting itself is shared. Speaker timing and speech history are the next server-backed stage.",
-    openTimer: "Open current timer",
+    speakerTimer: "Speaker timer",
+    noActiveSpeaker: "No active speaker",
+    waitingForSpeaker: "Start a turn from the participant list.",
+    startTurn: "Start turn",
+    speaking: "Speaking",
+    paused: "Paused",
+    speechLimit: "Limit",
+    pauseSpeech: "Pause",
+    resumeSpeech: "Resume",
+    finishSpeech: "Finish turn",
+    speechStarted: "Speaker timer started",
+    speechPaused: "Speaker timer paused",
+    speechResumed: "Speaker timer resumed",
+    speechFinished: "Speaker turn finished",
+    speechAlreadyActive: "Finish the current speaker before starting another turn.",
+    finishSpeechBeforeMeeting: "Finish the current speaker before ending the standup.",
+    speechHistory: "Speaking history",
+    currentStandupTurns: "Current standup turns",
+    noSpeechHistory: "Completed speaker turns will appear here.",
+    overLimit: "Over the limit",
+    withinLimit: "Within the limit",
     notFound: "This room is unavailable or you are not a member.",
     unavailable: "Could not load the room.",
   },
@@ -133,10 +151,27 @@ const translations = {
     noMeetingHistory: "Завершённые стендапы появятся здесь.",
     completedBy: "Завершил(а)",
     talkLimitLabel: "Лимит выступления",
-    meetingTools: "Инструменты встречи",
-    timerTitle: "Таймер выступлений",
-    timerCopy: "Сама встреча уже общая. Серверный таймер выступлений и их история появятся на следующем этапе.",
-    openTimer: "Открыть текущий таймер",
+    speakerTimer: "Таймер выступлений",
+    noActiveSpeaker: "Нет активного выступления",
+    waitingForSpeaker: "Запустите выступление из списка участников.",
+    startTurn: "Начать выступление",
+    speaking: "Выступает",
+    paused: "На паузе",
+    speechLimit: "Лимит",
+    pauseSpeech: "Пауза",
+    resumeSpeech: "Продолжить",
+    finishSpeech: "Завершить выступление",
+    speechStarted: "Таймер выступления запущен",
+    speechPaused: "Таймер поставлен на паузу",
+    speechResumed: "Таймер продолжен",
+    speechFinished: "Выступление завершено",
+    speechAlreadyActive: "Завершите текущее выступление перед запуском следующего.",
+    finishSpeechBeforeMeeting: "Завершите текущее выступление перед окончанием стендапа.",
+    speechHistory: "История выступлений",
+    currentStandupTurns: "Выступления текущего стендапа",
+    noSpeechHistory: "Завершённые выступления появятся здесь.",
+    overLimit: "Лимит превышен",
+    withinLimit: "В пределах лимита",
     notFound: "Комната недоступна или вы не являетесь её участником.",
     unavailable: "Не удалось загрузить комнату.",
   },
@@ -169,6 +204,17 @@ const meetingCopy = document.getElementById("meetingCopy");
 const meetingActionButton = document.getElementById("meetingActionButton");
 const refreshMeetingButton = document.getElementById("refreshMeetingButton");
 const meetingHistoryList = document.getElementById("meetingHistoryList");
+const speakerCard = document.getElementById("speakerCard");
+const speechStatusDot = document.getElementById("speechStatusDot");
+const speechStatus = document.getElementById("speechStatus");
+const speechSpeakerName = document.getElementById("speechSpeakerName");
+const speechElapsed = document.getElementById("speechElapsed");
+const speechCopy = document.getElementById("speechCopy");
+const speechActions = document.getElementById("speechActions");
+const speechPauseButton = document.getElementById("speechPauseButton");
+const speechFinishButton = document.getElementById("speechFinishButton");
+const speechHistoryPanel = document.getElementById("speechHistoryPanel");
+const speechHistoryList = document.getElementById("speechHistoryList");
 
 function tr(key) {
   return translations[language][key] || key;
@@ -197,6 +243,8 @@ function errorMessage(error) {
   if (error?.code === "ROOM_FORBIDDEN") return tr("forbidden");
   if (error?.code === "MEETING_ALREADY_ACTIVE") return tr("meetingAlreadyActive");
   if (error?.code === "MEETING_ACTIVE") return tr("finishMeetingBeforeArchive");
+  if (error?.code === "SPEECH_ALREADY_ACTIVE") return tr("speechAlreadyActive");
+  if (error?.code === "SPEECH_ACTIVE") return tr("finishSpeechBeforeMeeting");
   if (["OWNER_CANNOT_LEAVE", "OWNER_CANNOT_BE_REMOVED", "OWNER_ROLE_IMMUTABLE"].includes(error?.code)) {
     return tr("conflict");
   }
@@ -235,6 +283,7 @@ function applyLanguage(nextLanguage) {
   });
   if (room) renderRoom();
   if (room) renderMeetingState();
+  if (room) renderSpeechState();
 }
 
 function renderRoom() {
@@ -272,6 +321,14 @@ function renderRoom() {
 
     const actions = document.createElement("div");
     actions.className = "room-member-actions";
+    if (canManageSettings && meetingState.activeMeeting && !speechState.activeSpeech) {
+      const startButton = document.createElement("button");
+      startButton.type = "button";
+      startButton.className = "member-start-button";
+      startButton.textContent = tr("startTurn");
+      startButton.addEventListener("click", () => startSpeakerTurn(member, startButton));
+      actions.append(startButton);
+    }
     if (room.role === "owner" && member.role !== "owner") {
       const roleSelect = document.createElement("select");
       roleSelect.setAttribute("aria-label", `${member.name}: ${roleLabel(member.role)}`);
@@ -316,6 +373,76 @@ function renderMeetingElapsed() {
     0,
     Math.floor(Date.now() / 1000) - activeMeeting.startedAt,
   ));
+}
+
+function currentSpeechSeconds(speech) {
+  const runningSeconds = speech?.status === "running" && speech.resumedAt
+    ? Math.max(0, Math.floor(Date.now() / 1000) - speech.resumedAt)
+    : 0;
+  return Math.max(0, speech?.accumulatedSeconds || 0) + runningSeconds;
+}
+
+function renderSpeechElapsed() {
+  const speech = speechState.activeSpeech;
+  if (!speech) return;
+  const elapsed = currentSpeechSeconds(speech);
+  speechElapsed.textContent = formattedDuration(elapsed);
+  speakerCard.classList.toggle("over-limit", elapsed > speech.talkLimitSeconds);
+}
+
+function renderSpeechState() {
+  const activeMeeting = meetingState.activeMeeting;
+  const speech = speechState.activeSpeech;
+  const canManage = room?.role === "owner" || room?.role === "admin";
+  speakerCard.classList.toggle("active", Boolean(speech));
+  speechStatusDot.classList.toggle("active", speech?.status === "running");
+  speechHistoryPanel.hidden = !activeMeeting;
+
+  if (speech) {
+    speechStatus.textContent = tr(speech.status === "paused" ? "paused" : "speaking");
+    speechSpeakerName.textContent = speech.speaker.name;
+    speechElapsed.hidden = false;
+    speechCopy.textContent = `${tr("speechLimit")}: ${formattedDuration(speech.talkLimitSeconds)}`;
+    speechActions.hidden = !canManage;
+    speechPauseButton.textContent = tr(speech.status === "paused" ? "resumeSpeech" : "pauseSpeech");
+    speechPauseButton.dataset.action = speech.status === "paused" ? "resume" : "pause";
+    renderSpeechElapsed();
+  } else {
+    speechStatus.textContent = tr(activeMeeting ? "noActiveSpeaker" : "noActiveMeeting");
+    speechSpeakerName.textContent = tr("noActiveSpeaker");
+    speechElapsed.hidden = true;
+    speechCopy.textContent = activeMeeting
+      ? tr("waitingForSpeaker")
+      : tr("noActiveMeetingTitle");
+    speechActions.hidden = true;
+    speakerCard.classList.remove("over-limit");
+  }
+
+  speechHistoryList.replaceChildren();
+  if (!speechState.recentSpeeches.length) {
+    const empty = document.createElement("p");
+    empty.className = "meeting-history-empty";
+    empty.textContent = tr("noSpeechHistory");
+    speechHistoryList.append(empty);
+  } else {
+    speechState.recentSpeeches.forEach((completedSpeech) => {
+      const item = document.createElement("div");
+      item.className = `speech-history-item${completedSpeech.overLimit ? " over-limit" : ""}`;
+      const speaker = document.createElement("strong");
+      speaker.textContent = completedSpeech.speaker.name;
+      const details = document.createElement("small");
+      details.textContent = `${formattedDate(completedSpeech.startedAt)} · ${tr(completedSpeech.overLimit ? "overLimit" : "withinLimit")}`;
+      const duration = document.createElement("span");
+      duration.textContent = `${formattedDuration(completedSpeech.accumulatedSeconds)} / ${formattedDuration(completedSpeech.talkLimitSeconds)}`;
+      item.append(speaker, details, duration);
+      speechHistoryList.append(item);
+    });
+  }
+}
+
+function renderLiveTimers() {
+  renderMeetingElapsed();
+  renderSpeechElapsed();
 }
 
 function renderMeetingState() {
@@ -364,14 +491,96 @@ function renderMeetingState() {
 
 async function loadMeetingState(showFailure = true) {
   try {
+    const previousMeetingId = meetingState.activeMeeting?.id;
     meetingState = await api(`/api/rooms/${encodeURIComponent(room.id)}/meetings`, {
       cache: "no-store",
     });
+    if (previousMeetingId !== meetingState.activeMeeting?.id) {
+      speechState = { activeSpeech: null, recentSpeeches: [] };
+    }
     renderMeetingState();
+    await loadSpeechState(showFailure);
+    renderRoom();
   } catch (error) {
     if (showFailure && error?.message !== "AUTH_REQUIRED") {
       showToast(tr("meetingUnavailable"), true);
     }
+  }
+}
+
+async function loadSpeechState(showFailure = true) {
+  const meeting = meetingState.activeMeeting;
+  if (!meeting) {
+    speechState = { activeSpeech: null, recentSpeeches: [] };
+    renderSpeechState();
+    return;
+  }
+  try {
+    speechState = await api(
+      `/api/rooms/${encodeURIComponent(room.id)}/meetings/${encodeURIComponent(meeting.id)}/speeches`,
+      { cache: "no-store" },
+    );
+    renderSpeechState();
+  } catch (error) {
+    if (showFailure && error?.message !== "AUTH_REQUIRED") {
+      showToast(tr("meetingUnavailable"), true);
+    }
+  }
+}
+
+async function startSpeakerTurn(member, button) {
+  const meeting = meetingState.activeMeeting;
+  if (!meeting) return;
+  button.disabled = true;
+  try {
+    const payload = await api(
+      `/api/rooms/${encodeURIComponent(room.id)}/meetings/${encodeURIComponent(meeting.id)}/speeches`,
+      {
+        method: "POST",
+        body: JSON.stringify({ speakerUserId: member.id }),
+      },
+    );
+    speechState.activeSpeech = payload.speech;
+    renderSpeechState();
+    renderRoom();
+    showToast(tr("speechStarted"));
+  } catch (error) {
+    showToast(errorMessage(error), true);
+    await loadSpeechState(false);
+    renderRoom();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function runSpeechAction(action, button) {
+  const meeting = meetingState.activeMeeting;
+  const speech = speechState.activeSpeech;
+  if (!meeting || !speech) return;
+  button.disabled = true;
+  speechPauseButton.disabled = true;
+  speechFinishButton.disabled = true;
+  try {
+    const payload = await api(
+      `/api/rooms/${encodeURIComponent(room.id)}/meetings/${encodeURIComponent(meeting.id)}/speeches/${encodeURIComponent(speech.id)}/${action}`,
+      { method: "POST" },
+    );
+    if (action === "finish") {
+      speechState.activeSpeech = null;
+      speechState.recentSpeeches = [payload.speech, ...speechState.recentSpeeches].slice(0, 50);
+    } else {
+      speechState.activeSpeech = payload.speech;
+    }
+    renderSpeechState();
+    renderRoom();
+    showToast(tr(action === "finish" ? "speechFinished" : action === "pause" ? "speechPaused" : "speechResumed"));
+  } catch (error) {
+    showToast(errorMessage(error), true);
+    await loadSpeechState(false);
+    renderRoom();
+  } finally {
+    speechPauseButton.disabled = false;
+    speechFinishButton.disabled = false;
   }
 }
 
@@ -471,7 +680,10 @@ meetingActionButton.addEventListener("click", async () => {
         method: "POST",
       });
       meetingState.activeMeeting = payload.meeting;
+      speechState = { activeSpeech: null, recentSpeeches: [] };
       renderMeetingState();
+      renderSpeechState();
+      renderRoom();
       showToast(tr("meetingStarted"));
     }
   } catch (error) {
@@ -480,6 +692,14 @@ meetingActionButton.addEventListener("click", async () => {
   } finally {
     meetingActionButton.disabled = false;
   }
+});
+
+speechPauseButton.addEventListener("click", () => {
+  runSpeechAction(speechPauseButton.dataset.action, speechPauseButton);
+});
+
+speechFinishButton.addEventListener("click", () => {
+  runSpeechAction("finish", speechFinishButton);
 });
 
 refreshMeetingButton.addEventListener("click", async () => {
@@ -531,4 +751,7 @@ document.querySelectorAll("[data-language]").forEach((button) => {
 
 applyLanguage(language);
 loadRoom();
-setInterval(renderMeetingElapsed, 1000);
+setInterval(renderLiveTimers, 1000);
+setInterval(() => {
+  if (room && document.visibilityState === "visible") loadMeetingState(false);
+}, 10_000);

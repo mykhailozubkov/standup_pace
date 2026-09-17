@@ -89,11 +89,19 @@
                 </form>
               </article>
 
-              <article class="panel room-tools-card">
-                <p class="section-kicker" data-i18n="meetingTools">Meeting tools</p>
-                <h2 data-i18n="timerTitle">Speaker timer</h2>
-                <p data-i18n="timerCopy">The meeting itself is shared. Speaker timing and speech history are the next server-backed stage.</p>
-                <a class="primary-button room-tool-link" href="/admin" data-i18n="openTimer">Open current timer</a>
+              <article id="speakerCard" class="panel room-speaker-card">
+                <p class="section-kicker" data-i18n="speakerTimer">Speaker timer</p>
+                <div class="speech-status-line">
+                  <span id="speechStatusDot" class="meeting-status-dot"></span>
+                  <span id="speechStatus"></span>
+                </div>
+                <h2 id="speechSpeakerName" data-i18n="noActiveSpeaker">No active speaker</h2>
+                <strong id="speechElapsed" class="speech-elapsed" hidden>0:00</strong>
+                <p id="speechCopy"></p>
+                <div id="speechActions" class="speech-actions" hidden>
+                  <button id="speechPauseButton" class="secondary-button" type="button"></button>
+                  <button id="speechFinishButton" class="primary-button speech-finish-button" type="button" data-i18n="finishSpeech">Finish turn</button>
+                </div>
               </article>
 
               <article class="panel room-danger-card">
@@ -114,6 +122,16 @@
               </div>
             </div>
             <div id="meetingHistoryList" class="meeting-history-list"></div>
+          </section>
+
+          <section id="speechHistoryPanel" class="panel speech-history-panel" aria-labelledby="speechHistoryTitle" hidden>
+            <div class="panel-header">
+              <div>
+                <p class="section-kicker" data-i18n="speechHistory">Speaking history</p>
+                <h2 id="speechHistoryTitle" data-i18n="currentStandupTurns">Current standup turns</h2>
+              </div>
+            </div>
+            <div id="speechHistoryList" class="speech-history-list"></div>
           </section>
         </div>
       </main>

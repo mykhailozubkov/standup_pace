@@ -176,6 +176,41 @@ test("manages room settings, roles, membership, and archiving through the API", 
   assert.equal(duplicateMeetingResponse.status, 409);
   assert.equal((await duplicateMeetingResponse.json()).code, "MEETING_ALREADY_ACTIVE");
 
+  const startSpeechResponse = await worker.fetch(request(
+    `/api/rooms/${created.id}/meetings/${meeting.id}/speeches`,
+    {
+      method: "POST",
+      headers: { Cookie: ownerCookie, "Content-Type": "application/json" },
+      body: JSON.stringify({ speakerUserId: memberId }),
+    },
+  ), env);
+  assert.equal(startSpeechResponse.status, 201);
+  const speech = (await startSpeechResponse.json()).speech;
+  assert.equal(speech.speaker.name, "Ada Lovelace");
+  assert.equal(speech.status, "running");
+
+  const speechStateResponse = await worker.fetch(request(
+    `/api/rooms/${created.id}/meetings/${meeting.id}/speeches`,
+    { headers: { Cookie: memberCookie } },
+  ), env);
+  assert.equal(speechStateResponse.status, 200);
+  assert.equal((await speechStateResponse.json()).activeSpeech.id, speech.id);
+
+  const blockedEndResponse = await worker.fetch(request(
+    `/api/rooms/${created.id}/meetings/${meeting.id}/end`,
+    { method: "POST", headers: { Cookie: ownerCookie } },
+  ), env);
+  assert.equal(blockedEndResponse.status, 409);
+  assert.equal((await blockedEndResponse.json()).code, "SPEECH_ACTIVE");
+
+  for (const action of ["pause", "resume", "finish"]) {
+    const actionResponse = await worker.fetch(request(
+      `/api/rooms/${created.id}/meetings/${meeting.id}/speeches/${speech.id}/${action}`,
+      { method: "POST", headers: { Cookie: ownerCookie } },
+    ), env);
+    assert.equal(actionResponse.status, 200);
+  }
+
   const endMeetingResponse = await worker.fetch(request(
     `/api/rooms/${created.id}/meetings/${meeting.id}/end`,
     { method: "POST", headers: { Cookie: ownerCookie } },
@@ -261,4 +296,11 @@ test("keeps explicit method guards and security headers", async () => {
   const meetings = await worker.fetch(request("/api/rooms/room-id/meetings", { method: "PUT" }), env);
   assert.equal(meetings.status, 405);
   assert.equal(meetings.headers.get("allow"), "GET, POST");
+
+  const speeches = await worker.fetch(request(
+    "/api/rooms/room-id/meetings/meeting-id/speeches",
+    { method: "PUT" },
+  ), env);
+  assert.equal(speeches.status, 405);
+  assert.equal(speeches.headers.get("allow"), "GET, POST");
 });

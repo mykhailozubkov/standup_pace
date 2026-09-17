@@ -151,6 +151,14 @@ export async function endMeeting(
   if (!existing) throw new AppError("MEETING_NOT_FOUND", 404);
   if (existing.status !== "active") throw new AppError("MEETING_NOT_ACTIVE", 409);
 
+  const openSpeech = await env.DB.prepare(`
+    SELECT 1 AS active
+    FROM speeches
+    WHERE meeting_id = ? AND status IN ('running', 'paused')
+    LIMIT 1
+  `).bind(meetingId).all<{ active: number }>();
+  if (openSpeech.results[0]) throw new AppError("SPEECH_ACTIVE", 409);
+
   const result = await env.DB.prepare(`
     UPDATE meetings
     SET

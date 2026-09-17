@@ -9,6 +9,13 @@ import type { Env } from "./env.ts";
 import { requestOpenRouterTask } from "./openrouter.ts";
 import { endMeeting, listMeetings, startMeeting } from "./meetings.ts";
 import {
+  finishSpeech,
+  listSpeeches,
+  pauseSpeech,
+  resumeSpeech,
+  startSpeech,
+} from "./speeches.ts";
+import {
   archiveRoom,
   createRoom,
   getRoom,
@@ -219,6 +226,52 @@ async function handleEndMeeting(
   });
 }
 
+async function handleListSpeeches(
+  request: Request,
+  env: Env,
+  roomId: string,
+  meetingId: string,
+) {
+  const session = await requireAuthSession(request, env);
+  return sendJson(200, await listSpeeches(env, roomId, meetingId, session.user.id));
+}
+
+async function handleStartSpeech(
+  request: Request,
+  env: Env,
+  roomId: string,
+  meetingId: string,
+) {
+  const session = await requireAuthSession(request, env);
+  const speech = await startSpeech(
+    env,
+    roomId,
+    meetingId,
+    session.user.id,
+    await readJson(request, 2_048),
+  );
+  return sendJson(201, { speech });
+}
+
+async function handleSpeechAction(
+  request: Request,
+  env: Env,
+  roomId: string,
+  meetingId: string,
+  speechId: string,
+  action: "pause" | "resume" | "finish",
+) {
+  const session = await requireAuthSession(request, env);
+  const actionHandler = action === "pause"
+    ? pauseSpeech
+    : action === "resume"
+      ? resumeSpeech
+      : finishSpeech;
+  return sendJson(200, {
+    speech: await actionHandler(env, roomId, meetingId, speechId, session.user.id),
+  });
+}
+
 async function assetResponse(env: Env, request: Request, pathname: string) {
   const assetUrl = new URL(request.url);
   assetUrl.pathname = pathname;
@@ -315,6 +368,36 @@ app.post("/api/rooms/:roomId/meetings/:meetingId/end", (context) => handleEndMee
   context.req.param("meetingId"),
 ));
 app.all("/api/rooms/:roomId/meetings/:meetingId/end", () => methodNotAllowed("POST"));
+
+for (const action of ["pause", "resume", "finish"] as const) {
+  app.post(`/api/rooms/:roomId/meetings/:meetingId/speeches/:speechId/${action}`, (context) => (
+    handleSpeechAction(
+      context.req.raw,
+      context.env,
+      context.req.param("roomId"),
+      context.req.param("meetingId"),
+      context.req.param("speechId"),
+      action,
+    )
+  ));
+  app.all(`/api/rooms/:roomId/meetings/:meetingId/speeches/:speechId/${action}`, () => (
+    methodNotAllowed("POST")
+  ));
+}
+
+app.get("/api/rooms/:roomId/meetings/:meetingId/speeches", (context) => handleListSpeeches(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+  context.req.param("meetingId"),
+));
+app.post("/api/rooms/:roomId/meetings/:meetingId/speeches", (context) => handleStartSpeech(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+  context.req.param("meetingId"),
+));
+app.all("/api/rooms/:roomId/meetings/:meetingId/speeches", () => methodNotAllowed("GET, POST"));
 
 app.get("/api/rooms/:roomId/meetings", (context) => handleListMeetings(
   context.req.raw,

@@ -208,7 +208,7 @@ h1 { margin: 0; max-width: 680px; font-size: clamp(42px, 5.5vw, 72px); line-heig
 .room-actions-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(320px, .7fr); gap: 20px; margin-top: 46px; }
 .room-action-card { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 150px auto; align-items: end; gap: 12px; padding: 25px; border: 1px solid rgba(213,222,216,.9); border-radius: 22px; background: rgba(255,255,255,.94); box-shadow: 0 8px 28px rgba(31,52,42,.045); }
 .room-action-card > div:first-child { grid-column: 1 / -1; }
-.room-action-card h2, .rooms-heading h2, .room-setting-card h2, .room-tools-card h2, .room-danger-card h2, .room-meeting-card h2 { margin: 0; font-size: 21px; letter-spacing: -.035em; }
+.room-action-card h2, .rooms-heading h2, .room-setting-card h2, .room-tools-card h2, .room-danger-card h2, .room-meeting-card h2, .room-speaker-card h2 { margin: 0; font-size: 21px; letter-spacing: -.035em; }
 .room-action-card > div:first-child > p:last-child, .room-setting-card > p:last-child, .room-tools-card > p { margin: 9px 0 9px; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .room-form-field { min-width: 0; display: grid; gap: 7px; }
 .room-action-card label { margin: 0; color: var(--ink); font-size: 10px; font-weight: 800; }
@@ -253,10 +253,12 @@ h1 { margin: 0; max-width: 680px; font-size: clamp(42px, 5.5vw, 72px); line-heig
 .room-member small { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
 .room-member-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
 .room-member-actions select { max-width: 190px; height: 35px; border: 1px solid var(--line); border-radius: 9px; padding: 0 8px; background: white; color: var(--ink); font-size: 9px; font-weight: 700; }
+.member-start-button { min-height: 35px; border: 0; border-radius: 9px; padding: 0 11px; background: var(--green); color: white; font-size: 9px; font-weight: 800; }
+.member-start-button:hover:not(:disabled) { background: var(--green-dark); }
 .member-remove-button, .danger-button { min-height: 35px; border: 1px solid #efc4bb; border-radius: 9px; padding: 0 10px; background: #fff7f5; color: #a5412e; font-size: 9px; font-weight: 800; }
 .member-remove-button:hover:not(:disabled), .danger-button:hover:not(:disabled) { border-color: #dc9f91; background: #ffede8; }
 .room-side-stack { display: grid; gap: 20px; align-content: start; }
-.room-setting-card, .room-tools-card, .room-danger-card, .room-meeting-card { padding: 24px; }
+.room-setting-card, .room-tools-card, .room-danger-card, .room-meeting-card, .room-speaker-card { padding: 24px; }
 .room-meeting-card { transition: border-color .2s ease, background .2s ease; }
 .room-meeting-card.active { border-color: #a9ccb9; background: linear-gradient(145deg, #f7fbf8, #eef7f1); }
 .meeting-status-line { display: flex; align-items: center; gap: 7px; margin: 0 0 12px; color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
@@ -274,6 +276,24 @@ h1 { margin: 0; max-width: 680px; font-size: clamp(42px, 5.5vw, 72px); line-heig
 .meeting-history-item strong { font-size: 12px; }
 .meeting-history-item small { grid-column: 1; color: var(--muted); font-size: 9px; }
 .meeting-history-item span { grid-column: 2; grid-row: 1 / span 2; color: var(--muted); font-size: 9px; }
+.room-speaker-card { transition: border-color .2s ease, background .2s ease; }
+.room-speaker-card.active { border-color: #a9ccb9; background: linear-gradient(145deg, #f7fbf8, #eef7f1); }
+.room-speaker-card.over-limit { border-color: #e1a99c; background: linear-gradient(145deg, #fff9f7, #fff0ec); }
+.speech-status-line { display: flex; align-items: center; gap: 7px; margin: 12px 0; color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.speech-elapsed { display: block; margin: 17px 0 0; color: var(--green-dark); font-size: 46px; line-height: 1; letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
+.room-speaker-card.over-limit .speech-elapsed { color: #b34732; }
+.room-speaker-card > p:not(.section-kicker) { margin: 11px 0 17px; color: var(--muted); font-size: 10px; line-height: 1.6; }
+.speech-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.speech-actions[hidden] { display: none; }
+.speech-finish-button { background: #a94d3a; }
+.speech-history-panel { margin-top: 20px; }
+.speech-history-list { padding: 0 24px 20px; }
+.speech-history-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 18px; align-items: center; padding: 14px 0; border-top: 1px solid var(--line); }
+.speech-history-item.over-limit { margin: 0 -10px; padding: 14px 10px; border-top-color: #f0c4ba; border-radius: 10px; background: #fff1ee; }
+.speech-history-item strong { font-size: 12px; }
+.speech-history-item small { grid-column: 1; color: var(--muted); font-size: 9px; }
+.speech-history-item span { grid-column: 2; grid-row: 1 / span 2; color: var(--muted); font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.speech-history-item.over-limit span { color: #b34732; }
 .large-setting-value { display: block; margin: 20px 0 4px; font-size: 34px; letter-spacing: -.04em; }
 .room-settings-form { display: grid; gap: 8px; margin-top: 19px; }
 .room-settings-form[hidden] { display: none; }
@@ -339,4 +359,6 @@ h1 { margin: 0; max-width: 680px; font-size: clamp(42px, 5.5vw, 72px); line-heig
   .room-member-actions select { min-width: 0; max-width: none; flex: 1; }
   .meeting-history-item { grid-template-columns: 1fr; }
   .meeting-history-item span { grid-column: 1; grid-row: auto; }
+  .speech-history-item { grid-template-columns: 1fr; }
+  .speech-history-item span { grid-column: 1; grid-row: auto; }
 }
