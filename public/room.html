@@ -60,8 +60,18 @@
               <article class="panel room-setting-card">
                 <p class="section-kicker" data-i18n="settings">Settings</p>
                 <h2 data-i18n="defaultTalk">Default talk limit</h2>
-                <strong id="talkLimitValue" class="large-setting-value"></strong>
-                <p data-i18n="settingsCopy">Editing room settings and assigning administrators comes in the permissions stage.</p>
+                <div id="settingsReadOnly">
+                  <strong id="talkLimitValue" class="large-setting-value"></strong>
+                  <p data-i18n="settingsReadOnlyCopy">Room administrators manage these settings.</p>
+                </div>
+                <form id="roomSettingsForm" class="room-settings-form" hidden>
+                  <label for="roomNameInput" data-i18n="roomName">Room name</label>
+                  <input id="roomNameInput" maxlength="120" required />
+                  <label for="talkLimitInput" data-i18n="talkLimitSeconds">Talk limit in seconds</label>
+                  <input id="talkLimitInput" type="number" min="15" max="3600" step="15" required />
+                  <p id="settingsMessage" class="form-message" aria-live="polite"></p>
+                  <button class="primary-button" type="submit" data-i18n="saveSettings">Save settings</button>
+                </form>
               </article>
 
               <article class="panel room-tools-card">
@@ -69,6 +79,14 @@
                 <h2 data-i18n="timerTitle">Speaker timer</h2>
                 <p data-i18n="timerCopy">The current timer still stores its data locally. Room synchronization is the next implementation stage.</p>
                 <a class="primary-button room-tool-link" href="/admin" data-i18n="openTimer">Open current timer</a>
+              </article>
+
+              <article class="panel room-danger-card">
+                <p class="section-kicker" data-i18n="roomAccess">Room access</p>
+                <h2 data-i18n="membership">Membership</h2>
+                <p id="membershipCopy"></p>
+                <button id="leaveRoomButton" class="danger-button" type="button" data-i18n="leaveRoom" hidden>Leave room</button>
+                <button id="archiveRoomButton" class="danger-button" type="button" data-i18n="archiveRoom" hidden>Archive room</button>
               </article>
             </aside>
           </section>

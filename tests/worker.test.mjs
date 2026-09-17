@@ -109,6 +109,66 @@ test("creates and joins rooms through authenticated APIs", async () => {
   assert.equal((await detailResponse.json()).room.members.length, 2);
 });
 
+test("manages room settings, roles, membership, and archiving through the API", async () => {
+  const env = await testEnv();
+  const ownerCookie = await signUp(env);
+  const memberCookie = await signUp(env, {
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    password: "analytical engine 1843",
+  });
+
+  const createdResponse = await worker.fetch(request("/api/rooms", {
+    method: "POST",
+    headers: { Cookie: ownerCookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Product standup" }),
+  }), env);
+  const created = (await createdResponse.json()).room;
+  await worker.fetch(request("/api/rooms/join", {
+    method: "POST",
+    headers: { Cookie: memberCookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ joinCode: created.joinCode }),
+  }), env);
+
+  const detailResponse = await worker.fetch(request(`/api/rooms/${created.id}`, {
+    headers: { Cookie: ownerCookie },
+  }), env);
+  const detail = (await detailResponse.json()).room;
+  const memberId = detail.members.find(({ name }) => name === "Ada Lovelace").id;
+
+  const roleResponse = await worker.fetch(request(`/api/rooms/${created.id}/members/${memberId}`, {
+    method: "PATCH",
+    headers: { Cookie: ownerCookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ role: "admin" }),
+  }), env);
+  assert.equal(roleResponse.status, 200);
+  assert.equal(
+    (await roleResponse.json()).room.members.find(({ id }) => id === memberId).role,
+    "admin",
+  );
+
+  const settingsResponse = await worker.fetch(request(`/api/rooms/${created.id}`, {
+    method: "PATCH",
+    headers: { Cookie: memberCookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Updated standup", defaultTalkLimitSeconds: 180 }),
+  }), env);
+  assert.equal(settingsResponse.status, 200);
+  assert.equal((await settingsResponse.json()).room.name, "Updated standup");
+
+  const leaveResponse = await worker.fetch(request(`/api/rooms/${created.id}/members/${memberId}`, {
+    method: "DELETE",
+    headers: { Cookie: memberCookie },
+  }), env);
+  assert.equal(leaveResponse.status, 200);
+
+  const archiveResponse = await worker.fetch(request(`/api/rooms/${created.id}/archive`, {
+    method: "POST",
+    headers: { Cookie: ownerCookie },
+  }), env);
+  assert.equal(archiveResponse.status, 200);
+  assert.equal((await archiveResponse.json()).archived, true);
+});
+
 test("signs in an existing user with email and password", async () => {
   const env = await testEnv();
   await signUp(env);
@@ -165,4 +225,8 @@ test("keeps explicit method guards and security headers", async () => {
   const rooms = await worker.fetch(request("/api/rooms", { method: "PUT" }), env);
   assert.equal(rooms.status, 405);
   assert.equal(rooms.headers.get("allow"), "GET, POST");
+
+  const room = await worker.fetch(request("/api/rooms/room-id", { method: "POST" }), env);
+  assert.equal(room.status, 405);
+  assert.equal(room.headers.get("allow"), "GET, PATCH");
 });

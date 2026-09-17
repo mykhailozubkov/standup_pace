@@ -10,15 +10,32 @@ export interface AuthUser {
   email: string;
 }
 
+type RoomRole = "owner" | "admin" | "member";
+
 interface RoomRow {
   id: string;
   name: string;
   join_code: string;
-  role: "owner" | "admin" | "member";
+  role: RoomRole;
   default_talk_limit_seconds: number;
   member_count: number;
   created_at: number;
   joined_at: number;
+}
+
+interface RoomAccessRow {
+  owner_user_id: string;
+  name: string;
+  role: RoomRole;
+  default_talk_limit_seconds: number;
+}
+
+interface MemberRow {
+  role: RoomRole;
+}
+
+function validateRoomId(roomId: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(roomId)) throw new AppError("ROOM_NOT_FOUND", 404);
 }
 
 function normalizedRoomName(value: unknown) {
@@ -91,6 +108,37 @@ async function roomForUser(env: Env, roomId: string, userId: string) {
       AND rooms.status = 'active'
     LIMIT 1
   `).bind(roomId, userId).all<RoomRow>();
+  return result.results[0] || null;
+}
+
+async function roomAccessForUser(env: Env, roomId: string, userId: string) {
+  validateRoomId(roomId);
+  const result = await env.DB.prepare(`
+    SELECT
+      rooms.owner_user_id,
+      rooms.name,
+      rooms.default_talk_limit_seconds,
+      room_members.role
+    FROM rooms
+    JOIN room_members ON room_members.room_id = rooms.id
+    WHERE rooms.id = ?
+      AND room_members.user_id = ?
+      AND room_members.removed_at IS NULL
+      AND rooms.status = 'active'
+    LIMIT 1
+  `).bind(roomId, userId).all<RoomAccessRow>();
+  const access = result.results[0];
+  if (!access) throw new AppError("ROOM_NOT_FOUND", 404);
+  return access;
+}
+
+async function activeMember(env: Env, roomId: string, userId: string) {
+  const result = await env.DB.prepare(`
+    SELECT role
+    FROM room_members
+    WHERE room_id = ? AND user_id = ? AND removed_at IS NULL
+    LIMIT 1
+  `).bind(roomId, userId).all<MemberRow>();
   return result.results[0] || null;
 }
 
@@ -186,6 +234,10 @@ export async function joinRoom(env: Env, user: AuthUser, body: Record<string, un
         INSERT INTO room_members (room_id, user_id, role)
         VALUES (?, ?, 'member')
         ON CONFLICT(room_id, user_id) DO UPDATE SET
+          role = CASE
+            WHEN room_members.removed_at IS NOT NULL THEN 'member'
+            ELSE room_members.role
+          END,
           joined_at = CASE
             WHEN room_members.removed_at IS NOT NULL THEN unixepoch()
             ELSE room_members.joined_at
@@ -203,7 +255,7 @@ export async function joinRoom(env: Env, user: AuthUser, body: Record<string, un
 }
 
 export async function getRoom(env: Env, roomId: string, userId: string) {
-  if (!/^[0-9a-f-]{36}$/i.test(roomId)) throw new AppError("ROOM_NOT_FOUND", 404);
+  validateRoomId(roomId);
   const room = await roomForUser(env, roomId, userId);
   if (!room) throw new AppError("ROOM_NOT_FOUND", 404);
 
@@ -228,6 +280,104 @@ export async function getRoom(env: Env, roomId: string, userId: string) {
       name: member.name,
       role: member.role,
       joinedAt: Number(member.joined_at),
+      isCurrentUser: member.id === userId,
     })),
   };
+}
+
+export async function updateRoom(
+  env: Env,
+  roomId: string,
+  actorUserId: string,
+  body: Record<string, unknown>,
+) {
+  const access = await roomAccessForUser(env, roomId, actorUserId);
+  if (access.role !== "owner" && access.role !== "admin") {
+    throw new AppError("ROOM_FORBIDDEN", 403);
+  }
+
+  const updatesName = body.name !== undefined;
+  const updatesTalkLimit = body.defaultTalkLimitSeconds !== undefined;
+  if (!updatesName && !updatesTalkLimit) throw new AppError("INVALID_ROOM_UPDATE", 400);
+
+  const name = updatesName ? normalizedRoomName(body.name) : access.name;
+  const talkLimit = updatesTalkLimit
+    ? normalizedTalkLimit(body.defaultTalkLimitSeconds)
+    : Number(access.default_talk_limit_seconds);
+
+  await env.DB.prepare(`
+    UPDATE rooms
+    SET name = ?, default_talk_limit_seconds = ?, updated_at = unixepoch()
+    WHERE id = ? AND status = 'active'
+  `).bind(name, talkLimit, roomId).all();
+
+  return getRoom(env, roomId, actorUserId);
+}
+
+export async function updateMemberRole(
+  env: Env,
+  roomId: string,
+  actorUserId: string,
+  memberUserId: string,
+  body: Record<string, unknown>,
+) {
+  const access = await roomAccessForUser(env, roomId, actorUserId);
+  if (access.role !== "owner") throw new AppError("ROOM_FORBIDDEN", 403);
+  if (body.role !== "admin" && body.role !== "member") {
+    throw new AppError("INVALID_MEMBER_ROLE", 400);
+  }
+
+  const member = await activeMember(env, roomId, memberUserId);
+  if (!member) throw new AppError("MEMBER_NOT_FOUND", 404);
+  if (member.role === "owner") throw new AppError("OWNER_ROLE_IMMUTABLE", 409);
+
+  await env.DB.prepare(`
+    UPDATE room_members
+    SET role = ?
+    WHERE room_id = ? AND user_id = ? AND removed_at IS NULL
+  `).bind(body.role, roomId, memberUserId).all();
+
+  return getRoom(env, roomId, actorUserId);
+}
+
+export async function removeRoomMember(
+  env: Env,
+  roomId: string,
+  actorUserId: string,
+  memberUserId: string,
+) {
+  const access = await roomAccessForUser(env, roomId, actorUserId);
+  const member = await activeMember(env, roomId, memberUserId);
+  if (!member) throw new AppError("MEMBER_NOT_FOUND", 404);
+
+  if (memberUserId === actorUserId) {
+    if (access.role === "owner") throw new AppError("OWNER_CANNOT_LEAVE", 409);
+  } else {
+    if (access.role === "member") throw new AppError("ROOM_FORBIDDEN", 403);
+    if (access.role === "admin" && member.role !== "member") {
+      throw new AppError("ROOM_FORBIDDEN", 403);
+    }
+    if (member.role === "owner") throw new AppError("OWNER_CANNOT_BE_REMOVED", 409);
+  }
+
+  await env.DB.prepare(`
+    UPDATE room_members
+    SET removed_at = unixepoch()
+    WHERE room_id = ? AND user_id = ? AND removed_at IS NULL
+  `).bind(roomId, memberUserId).all();
+
+  return { roomId, memberId: memberUserId };
+}
+
+export async function archiveRoom(env: Env, roomId: string, actorUserId: string) {
+  const access = await roomAccessForUser(env, roomId, actorUserId);
+  if (access.role !== "owner") throw new AppError("ROOM_FORBIDDEN", 403);
+
+  await env.DB.prepare(`
+    UPDATE rooms
+    SET status = 'archived', archived_at = unixepoch(), updated_at = unixepoch()
+    WHERE id = ? AND status = 'active'
+  `).bind(roomId).all();
+
+  return { roomId, archived: true };
 }

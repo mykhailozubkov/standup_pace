@@ -7,7 +7,16 @@ import {
 } from "./auth.ts";
 import type { Env } from "./env.ts";
 import { requestOpenRouterTask } from "./openrouter.ts";
-import { createRoom, getRoom, joinRoom, listRooms } from "./rooms.ts";
+import {
+  archiveRoom,
+  createRoom,
+  getRoom,
+  joinRoom,
+  listRooms,
+  removeRoomMember,
+  updateMemberRole,
+  updateRoom,
+} from "./rooms.ts";
 
 type AppContext = { Bindings: Env };
 
@@ -149,6 +158,44 @@ async function handleGetRoom(request: Request, env: Env, roomId: string) {
   return sendJson(200, { room: await getRoom(env, roomId, session.user.id) });
 }
 
+async function handleUpdateRoom(request: Request, env: Env, roomId: string) {
+  const session = await requireAuthSession(request, env);
+  const room = await updateRoom(env, roomId, session.user.id, await readJson(request, 4_096));
+  return sendJson(200, { room });
+}
+
+async function handleUpdateMemberRole(
+  request: Request,
+  env: Env,
+  roomId: string,
+  memberId: string,
+) {
+  const session = await requireAuthSession(request, env);
+  const room = await updateMemberRole(
+    env,
+    roomId,
+    session.user.id,
+    memberId,
+    await readJson(request, 2_048),
+  );
+  return sendJson(200, { room });
+}
+
+async function handleRemoveRoomMember(
+  request: Request,
+  env: Env,
+  roomId: string,
+  memberId: string,
+) {
+  const session = await requireAuthSession(request, env);
+  return sendJson(200, await removeRoomMember(env, roomId, session.user.id, memberId));
+}
+
+async function handleArchiveRoom(request: Request, env: Env, roomId: string) {
+  const session = await requireAuthSession(request, env);
+  return sendJson(200, await archiveRoom(env, roomId, session.user.id));
+}
+
 async function assetResponse(env: Env, request: Request, pathname: string) {
   const assetUrl = new URL(request.url);
   assetUrl.pathname = pathname;
@@ -217,12 +264,38 @@ app.all("/api/rooms", () => methodNotAllowed("GET, POST"));
 app.post("/api/rooms/join", (context) => handleJoinRoom(context.req.raw, context.env));
 app.all("/api/rooms/join", () => methodNotAllowed("POST"));
 
+app.patch("/api/rooms/:roomId/members/:memberId", (context) => handleUpdateMemberRole(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+  context.req.param("memberId"),
+));
+app.delete("/api/rooms/:roomId/members/:memberId", (context) => handleRemoveRoomMember(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+  context.req.param("memberId"),
+));
+app.all("/api/rooms/:roomId/members/:memberId", () => methodNotAllowed("PATCH, DELETE"));
+
+app.post("/api/rooms/:roomId/archive", (context) => handleArchiveRoom(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+));
+app.all("/api/rooms/:roomId/archive", () => methodNotAllowed("POST"));
+
 app.get("/api/rooms/:roomId", (context) => handleGetRoom(
   context.req.raw,
   context.env,
   context.req.param("roomId"),
 ));
-app.all("/api/rooms/:roomId", () => methodNotAllowed("GET"));
+app.patch("/api/rooms/:roomId", (context) => handleUpdateRoom(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+));
+app.all("/api/rooms/:roomId", () => methodNotAllowed("GET, PATCH"));
 
 app.post("/api/task", (context) => handleTask(context.req.raw, context.env));
 app.all("/api/task", () => methodNotAllowed("POST"));
