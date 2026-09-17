@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Your Standup Helper rooms" />
+    <title>Standup Helper — rooms</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell dashboard-shell">
+      <header class="topbar">
+        <a class="brand" href="/dashboard" aria-label="Standup Helper">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>Standup Helper</span>
+        </a>
+        <div class="topbar-actions">
+          <span id="accountName" class="account-chip"></span>
+          <div class="language-switcher" role="group" aria-label="Language">
+            <button type="button" data-language="en" class="active">EN</button>
+            <button type="button" data-language="ru">RU</button>
+          </div>
+          <a class="header-link" href="/admin" data-i18n="timer">Timer</a>
+          <button id="logoutButton" class="logout-button" type="button" data-i18n="logout">Log out</button>
+        </div>
+      </header>
+
+      <main class="dashboard-main">
+        <section class="dashboard-hero">
+          <p class="eyebrow" data-i18n="workspace">Your workspace</p>
+          <h1><span data-i18n="heroLine1">Rooms for every</span><br /><span data-i18n="heroLine2">conversation.</span></h1>
+          <p data-i18n="heroCopy">Create a room you manage, or join a teammate using their six-character code.</p>
+        </section>
+
+        <section class="room-actions-grid">
+          <form id="createRoomForm" class="room-action-card">
+            <div>
+              <p class="section-kicker" data-i18n="newRoom">New room</p>
+              <h2 data-i18n="createRoom">Create a room</h2>
+              <p data-i18n="createCopy">You become its owner and can invite participants with a code.</p>
+            </div>
+            <label for="roomNameInput" data-i18n="roomName">Room name</label>
+            <input id="roomNameInput" type="text" maxlength="120" autocomplete="off" placeholder="Product standup" data-i18n-placeholder="roomPlaceholder" required />
+            <label for="talkLimitInput" data-i18n="talkLimit">Default talk limit</label>
+            <select id="talkLimitInput">
+              <option value="60">1:00</option>
+              <option value="120" selected>2:00</option>
+              <option value="180">3:00</option>
+              <option value="300">5:00</option>
+            </select>
+            <button class="primary-button" type="submit" data-i18n="create">Create room</button>
+            <p class="form-message" data-form-message="create" role="alert"></p>
+          </form>
+
+          <form id="joinRoomForm" class="room-action-card join-room-card">
+            <div>
+              <p class="section-kicker" data-i18n="invitation">Invitation</p>
+              <h2 data-i18n="joinRoom">Join a room</h2>
+              <p data-i18n="joinCopy">Enter the code shared by the room owner.</p>
+            </div>
+            <label for="joinCodeInput" data-i18n="joinCode">Room code</label>
+            <input id="joinCodeInput" class="join-code-input" type="text" maxlength="7" autocomplete="off" placeholder="ABC234" required />
+            <button class="secondary-button" type="submit" data-i18n="join">Join room</button>
+            <p class="form-message" data-form-message="join" role="alert"></p>
+          </form>
+        </section>
+
+        <section class="rooms-section" aria-labelledby="roomsTitle">
+          <div class="rooms-heading">
+            <div>
+              <p class="section-kicker" data-i18n="membership">Membership</p>
+              <h2 id="roomsTitle" data-i18n="yourRooms">Your rooms</h2>
+            </div>
+            <button id="refreshRoomsButton" class="text-button" type="button" data-i18n="refresh">Refresh</button>
+          </div>
+          <div id="roomsList" class="rooms-list" aria-live="polite"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/dashboard.js"></script>
+  </body>
+</html>

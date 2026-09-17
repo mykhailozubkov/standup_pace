@@ -151,7 +151,7 @@ async function checkExistingSession() {
     const response = await fetch("/api/auth/get-session", { cache: "no-store" });
     if (!response.ok) return;
     const payload = await response.json();
-    if (payload?.user) window.location.replace("/admin");
+    if (payload?.user) window.location.replace("/dashboard");
   } catch {
     showMessage("unavailable");
   }
@@ -188,7 +188,7 @@ form.addEventListener("submit", async (event) => {
     const payload = await response.json().catch(() => null);
     if (response.ok && payload?.user) {
       passwordInput.value = "";
-      window.location.replace("/admin");
+      window.location.replace("/dashboard");
       return;
     }
     showMessage(errorKey(response, payload));

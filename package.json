@@ -10,7 +10,7 @@
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote --config wrangler.jsonc",
     "db:migrations:list": "wrangler d1 migrations list DB --remote --config wrangler.jsonc",
     "auth:schema": "auth generate --config better-auth.schema.ts --output .wrangler-auth-schema.sql --yes",
-    "check": "tsc --noEmit && node --check public/app.js && node --check public/login.js",
+    "check": "tsc --noEmit && node --check public/app.js && node --check public/login.js && node --check public/dashboard.js && node --check public/room.js",
     "test": "node --experimental-strip-types --test"
   },
   "dependencies": {

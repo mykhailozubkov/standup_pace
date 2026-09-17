@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Standup Helper room" />
+    <title>Standup Helper — room</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell room-shell">
+      <header class="topbar">
+        <a class="brand" href="/dashboard" aria-label="Standup Helper">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>Standup Helper</span>
+        </a>
+        <div class="topbar-actions">
+          <a class="header-link" href="/dashboard" data-i18n="allRooms">All rooms</a>
+          <div class="language-switcher" role="group" aria-label="Language">
+            <button type="button" data-language="en" class="active">EN</button>
+            <button type="button" data-language="ru">RU</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="room-main">
+        <section id="roomLoading" class="room-loading" data-i18n="loading">Loading room…</section>
+        <div id="roomContent" hidden>
+          <section class="room-hero">
+            <div>
+              <p class="eyebrow" data-i18n="room">Room</p>
+              <div class="room-title-line">
+                <h1 id="roomName"></h1>
+                <span id="roomRole" class="role-pill"></span>
+              </div>
+              <p class="hero-copy" data-i18n="roomCopy">The shared space for participants, speaking time, tasks, and future quizzes.</p>
+            </div>
+            <div class="room-code-card">
+              <span data-i18n="inviteCode">Invitation code</span>
+              <strong id="roomCode"></strong>
+              <button id="copyCodeButton" class="text-button" type="button" data-i18n="copyCode">Copy code</button>
+            </div>
+          </section>
+
+          <section class="room-overview-grid">
+            <article class="panel room-members-panel">
+              <div class="panel-header">
+                <div>
+                  <p class="section-kicker" data-i18n="people">People</p>
+                  <h2><span data-i18n="members">Members</span> <span id="memberCount" class="count-pill">0</span></h2>
+                </div>
+              </div>
+              <div id="membersList" class="room-members-list"></div>
+            </article>
+
+            <aside class="room-side-stack">
+              <article class="panel room-setting-card">
+                <p class="section-kicker" data-i18n="settings">Settings</p>
+                <h2 data-i18n="defaultTalk">Default talk limit</h2>
+                <strong id="talkLimitValue" class="large-setting-value"></strong>
+                <p data-i18n="settingsCopy">Editing room settings and assigning administrators comes in the permissions stage.</p>
+              </article>
+
+              <article class="panel room-tools-card">
+                <p class="section-kicker" data-i18n="meetingTools">Meeting tools</p>
+                <h2 data-i18n="timerTitle">Speaker timer</h2>
+                <p data-i18n="timerCopy">The current timer still stores its data locally. Room synchronization is the next implementation stage.</p>
+                <a class="primary-button room-tool-link" href="/admin" data-i18n="openTimer">Open current timer</a>
+              </article>
+            </aside>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/room.js"></script>
+  </body>
+</html>

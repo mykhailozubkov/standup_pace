@@ -7,6 +7,7 @@ import {
 } from "./auth.ts";
 import type { Env } from "./env.ts";
 import { requestOpenRouterTask } from "./openrouter.ts";
+import { createRoom, getRoom, joinRoom, listRooms } from "./rooms.ts";
 
 type AppContext = { Bindings: Env };
 
@@ -126,6 +127,28 @@ async function handleTask(request: Request, env: Env) {
   ));
 }
 
+async function handleListRooms(request: Request, env: Env) {
+  const session = await requireAuthSession(request, env);
+  return sendJson(200, { rooms: await listRooms(env, session.user.id) });
+}
+
+async function handleCreateRoom(request: Request, env: Env) {
+  const session = await requireAuthSession(request, env);
+  const room = await createRoom(env, session.user, await readJson(request, 4_096));
+  return sendJson(201, { room });
+}
+
+async function handleJoinRoom(request: Request, env: Env) {
+  const session = await requireAuthSession(request, env);
+  const room = await joinRoom(env, session.user, await readJson(request, 2_048));
+  return sendJson(200, { room });
+}
+
+async function handleGetRoom(request: Request, env: Env, roomId: string) {
+  const session = await requireAuthSession(request, env);
+  return sendJson(200, { room: await getRoom(env, roomId, session.user.id) });
+}
+
 async function assetResponse(env: Env, request: Request, pathname: string) {
   const assetUrl = new URL(request.url);
   assetUrl.pathname = pathname;
@@ -145,14 +168,31 @@ async function handlePage(request: Request, env: Env, pathname: string) {
 
   if (["/", "/login.html"].includes(pathname)) {
     const session = await sessionState(request, env);
-    if (session.authenticated) return Response.redirect(new URL("/admin", request.url).toString(), 302);
+    if (session.authenticated) return Response.redirect(new URL("/dashboard", request.url).toString(), 302);
     return assetResponse(env, request, "/login.html");
+  }
+
+  if (["/dashboard", "/dashboard/", "/dashboard.html"].includes(pathname)) {
+    const session = await sessionState(request, env);
+    if (!session.authenticated) return Response.redirect(new URL("/", request.url).toString(), 302);
+    return assetResponse(env, request, "/dashboard.html");
   }
 
   if (["/admin", "/admin/", "/admin.html"].includes(pathname)) {
     const session = await sessionState(request, env);
     if (!session.authenticated) return Response.redirect(new URL("/", request.url).toString(), 302);
     return assetResponse(env, request, "/admin.html");
+  }
+
+  if (/^\/rooms\/[0-9a-f-]{36}\/?$/i.test(pathname)) {
+    const session = await sessionState(request, env);
+    if (!session.authenticated) return Response.redirect(new URL("/", request.url).toString(), 302);
+    return assetResponse(env, request, "/room.html");
+  }
+
+  if (pathname === "/room.html") {
+    const session = await sessionState(request, env);
+    return Response.redirect(new URL(session.authenticated ? "/dashboard" : "/", request.url).toString(), 302);
   }
 
   return assetResponse(env, request, pathname);
@@ -169,6 +209,20 @@ const app = new Hono<AppContext>();
 app.all("/api/auth/*", (context) => (
   createAuth(context.env, context.req.raw).handler(context.req.raw)
 ));
+
+app.get("/api/rooms", (context) => handleListRooms(context.req.raw, context.env));
+app.post("/api/rooms", (context) => handleCreateRoom(context.req.raw, context.env));
+app.all("/api/rooms", () => methodNotAllowed("GET, POST"));
+
+app.post("/api/rooms/join", (context) => handleJoinRoom(context.req.raw, context.env));
+app.all("/api/rooms/join", () => methodNotAllowed("POST"));
+
+app.get("/api/rooms/:roomId", (context) => handleGetRoom(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+));
+app.all("/api/rooms/:roomId", () => methodNotAllowed("GET"));
 
 app.post("/api/task", (context) => handleTask(context.req.raw, context.env));
 app.all("/api/task", () => methodNotAllowed("POST"));
