@@ -8,8 +8,10 @@ import {
 import type { Env } from "./env.ts";
 import { requestOpenRouterTask } from "./openrouter.ts";
 import { endMeeting, listMeetings, startMeeting } from "./meetings.ts";
+import { drawAssignment, listAssignments } from "./assignments.ts";
 import {
   finishSpeech,
+  listRoomSpeeches,
   listSpeeches,
   pauseSpeech,
   resumeSpeech,
@@ -272,6 +274,28 @@ async function handleSpeechAction(
   });
 }
 
+async function handleListAssignments(request: Request, env: Env, roomId: string) {
+  const session = await requireAuthSession(request, env);
+  return sendJson(200, await listAssignments(env, roomId, session.user.id));
+}
+
+async function handleListRoomSpeeches(request: Request, env: Env, roomId: string) {
+  const session = await requireAuthSession(request, env);
+  return sendJson(200, await listRoomSpeeches(env, roomId, session.user.id));
+}
+
+async function handleDrawAssignment(request: Request, env: Env, roomId: string) {
+  const session = await requireAuthSession(request, env);
+  const result = await drawAssignment(
+    env,
+    roomId,
+    session.user.id,
+    await readJson(request, 2_048),
+    new URL(request.url).origin,
+  );
+  return sendJson(201, result);
+}
+
 async function assetResponse(env: Env, request: Request, pathname: string) {
   const assetUrl = new URL(request.url);
   assetUrl.pathname = pathname;
@@ -410,6 +434,27 @@ app.post("/api/rooms/:roomId/meetings", (context) => handleStartMeeting(
   context.req.param("roomId"),
 ));
 app.all("/api/rooms/:roomId/meetings", () => methodNotAllowed("GET, POST"));
+
+app.post("/api/rooms/:roomId/assignments/draw", (context) => handleDrawAssignment(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+));
+app.all("/api/rooms/:roomId/assignments/draw", () => methodNotAllowed("POST"));
+
+app.get("/api/rooms/:roomId/assignments", (context) => handleListAssignments(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+));
+app.all("/api/rooms/:roomId/assignments", () => methodNotAllowed("GET"));
+
+app.get("/api/rooms/:roomId/speeches", (context) => handleListRoomSpeeches(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+));
+app.all("/api/rooms/:roomId/speeches", () => methodNotAllowed("GET"));
 
 app.get("/api/rooms/:roomId", (context) => handleGetRoom(
   context.req.raw,

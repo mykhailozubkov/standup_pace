@@ -59,6 +59,7 @@ export async function createTestD1() {
     "0003_add_auth_rate_limit.sql",
     "0004_create_meetings.sql",
     "0005_create_speeches.sql",
+    "0006_create_assignments.sql",
   ]) {
     const migrationUrl = new URL(`../../migrations/${filename}`, import.meta.url);
     database.exec(await readFile(migrationUrl, "utf8"));

@@ -130,6 +130,24 @@ test("manages room settings, roles, membership, and archiving through the API", 
     body: JSON.stringify({ joinCode: created.joinCode }),
   }), env);
 
+  const assignmentStateResponse = await worker.fetch(request(
+    `/api/rooms/${created.id}/assignments`,
+    { headers: { Cookie: memberCookie } },
+  ), env);
+  assert.equal(assignmentStateResponse.status, 200);
+  assert.equal((await assignmentStateResponse.json()).nextDraw.remaining, 2);
+
+  const invalidDrawResponse = await worker.fetch(request(
+    `/api/rooms/${created.id}/assignments/draw`,
+    {
+      method: "POST",
+      headers: { Cookie: ownerCookie, "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "invalid" }),
+    },
+  ), env);
+  assert.equal(invalidDrawResponse.status, 400);
+  assert.equal((await invalidDrawResponse.json()).code, "INVALID_TASK_KIND");
+
   const detailResponse = await worker.fetch(request(`/api/rooms/${created.id}`, {
     headers: { Cookie: ownerCookie },
   }), env);
@@ -303,4 +321,11 @@ test("keeps explicit method guards and security headers", async () => {
   ), env);
   assert.equal(speeches.status, 405);
   assert.equal(speeches.headers.get("allow"), "GET, POST");
+
+  const assignments = await worker.fetch(request(
+    "/api/rooms/room-id/assignments",
+    { method: "POST" },
+  ), env);
+  assert.equal(assignments.status, 405);
+  assert.equal(assignments.headers.get("allow"), "GET");
 });

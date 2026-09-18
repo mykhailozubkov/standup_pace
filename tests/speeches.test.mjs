@@ -4,6 +4,7 @@ import { endMeeting, startMeeting } from "../src/meetings.ts";
 import { createRoom, joinRoom, updateMemberRole } from "../src/rooms.ts";
 import {
   finishSpeech,
+  listRoomSpeeches,
   listSpeeches,
   pauseSpeech,
   resumeSpeech,
@@ -58,6 +59,11 @@ test("runs, pauses, resumes, and finishes a persisted speaker turn", async () =>
   const state = await listSpeeches(env, room.id, meeting.id, member.id);
   assert.equal(state.activeSpeech, null);
   assert.equal(state.recentSpeeches[0].id, started.id);
+
+  await endMeeting(env, room.id, meeting.id, owner.id);
+  const roomHistory = await listRoomSpeeches(env, room.id, member.id);
+  assert.equal(roomHistory.activeSpeech, null);
+  assert.equal(roomHistory.recentSpeeches[0].id, started.id);
 });
 
 test("enforces room roles, membership, and one open speech per standup", async () => {

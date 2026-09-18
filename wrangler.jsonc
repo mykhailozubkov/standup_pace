@@ -13,7 +13,7 @@
     "html_handling": "none"
   },
   "vars": {
-    "OPENROUTER_MODEL": "dots-studio/dots-3-note-preview:free",
+    "OPENROUTER_MODEL": "openrouter/free",
     "PUBLIC_APP_URL": "https://standup-helper.mykhailo-zubkov.workers.dev"
   },
   "d1_databases": [

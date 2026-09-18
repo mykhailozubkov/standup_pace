@@ -163,6 +163,23 @@ export async function listSpeeches(
   };
 }
 
+export async function listRoomSpeeches(env: Env, roomId: string, userId: string) {
+  await roomAccess(env, roomId, userId);
+  const result = await env.DB.prepare(`${SPEECH_SELECT}
+    JOIN meetings ON meetings.id = speeches.meeting_id
+    WHERE meetings.room_id = ?
+    ORDER BY
+      CASE speeches.status WHEN 'running' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,
+      speeches.started_at DESC
+    LIMIT 51
+  `).bind(roomId).all<SpeechRow>();
+  const speeches = result.results.map(speechPayload);
+  return {
+    activeSpeech: speeches.find((speech) => speech.status !== "completed") || null,
+    recentSpeeches: speeches.filter((speech) => speech.status === "completed").slice(0, 50),
+  };
+}
+
 export async function startSpeech(
   env: Env,
   roomId: string,

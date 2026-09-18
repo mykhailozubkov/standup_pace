@@ -1,7 +1,7 @@
 import { AppError, mapNetworkError, mapOpenRouterError } from "./errors.ts";
 import type { Env } from "./env.ts";
 
-const DEFAULT_MODEL = "dots-studio/dots-3-note-preview:free";
+const DEFAULT_MODEL = "openrouter/free";
 
 function retryAfterSeconds(value: string | null) {
   if (!value) return undefined;

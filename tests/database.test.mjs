@@ -8,6 +8,7 @@ const authMigrationUrl = new URL("../migrations/0002_add_better_auth.sql", impor
 const rateLimitMigrationUrl = new URL("../migrations/0003_add_auth_rate_limit.sql", import.meta.url);
 const meetingMigrationUrl = new URL("../migrations/0004_create_meetings.sql", import.meta.url);
 const speechMigrationUrl = new URL("../migrations/0005_create_speeches.sql", import.meta.url);
+const assignmentMigrationUrl = new URL("../migrations/0006_create_assignments.sql", import.meta.url);
 
 test("the initial D1 migration creates the room data model", async () => {
   const database = new DatabaseSync(":memory:");
@@ -190,4 +191,57 @@ test("the speech migration models resumable speaker turns", async () => {
     ORDER BY name
   `).all().map(({ name }) => name);
   assert.deepEqual(indexes, ["speeches_history_by_meeting", "speeches_one_open_per_meeting"]);
+});
+
+test("the assignment migration separates current-call and preparation task rounds", async () => {
+  const database = new DatabaseSync(":memory:");
+  database.exec(await readFile(migrationUrl, "utf8"));
+  database.exec(await readFile(meetingMigrationUrl, "utf8"));
+  database.exec(await readFile(assignmentMigrationUrl, "utf8"));
+
+  database.prepare("INSERT INTO user_profiles (user_id, display_name) VALUES (?, ?)")
+    .run("user-1", "Ada");
+  database.prepare(`
+    INSERT INTO rooms (id, owner_user_id, name, join_code)
+    VALUES (?, ?, ?, ?)
+  `).run("room-1", "user-1", "Platform", "ROOM42");
+  database.prepare(`
+    INSERT INTO meetings (id, room_id, talk_limit_seconds, started_by_user_id)
+    VALUES (?, ?, ?, ?)
+  `).run("meeting-1", "room-1", 120, "user-1");
+
+  const insert = database.prepare(`
+    INSERT INTO assignments (
+      id, room_id, meeting_id, kind, cycle_number,
+      participant_user_id, assigned_by_user_id, task_en, task_ru, model
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  insert.run(
+    "assignment-1", "room-1", null, "next", 1,
+    "user-1", "user-1", "Tell a joke", "Расскажите шутку", "test-model",
+  );
+  assert.throws(() => insert.run(
+    "assignment-2", "room-1", null, "next", 1,
+    "user-1", "user-1", "Another", "Другое", "test-model",
+  ), /UNIQUE/);
+  assert.throws(() => insert.run(
+    "assignment-3", "room-1", null, "current", 1,
+    "user-1", "user-1", "Another", "Другое", "test-model",
+  ), /CHECK/);
+
+  insert.run(
+    "assignment-4", "room-1", "meeting-1", "current", 1,
+    "user-1", "user-1", "Share a story", "Расскажите историю", "test-model",
+  );
+  const indexes = database.prepare(`
+    SELECT name FROM sqlite_schema
+    WHERE type = 'index' AND name LIKE 'assignments_%'
+    ORDER BY name
+  `).all().map(({ name }) => name);
+  assert.deepEqual(indexes, [
+    "assignments_by_participant",
+    "assignments_current_cycle_participant",
+    "assignments_history_by_room",
+    "assignments_next_cycle_participant",
+  ]);
 });

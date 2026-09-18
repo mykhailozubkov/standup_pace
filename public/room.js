@@ -3,6 +3,14 @@ let language = localStorage.getItem(languageKey) === "ru" ? "ru" : "en";
 let room = null;
 let meetingState = { activeMeeting: null, recentMeetings: [] };
 let speechState = { activeSpeech: null, recentSpeeches: [] };
+let assignmentState = {
+  activeMeetingId: null,
+  currentDraw: { available: false, cycleNumber: 1, remaining: 0, total: 0, latestAssignment: null },
+  nextDraw: { available: false, cycleNumber: 1, remaining: 0, total: 0, latestAssignment: null },
+  recentAssignments: [],
+  myAssignments: [],
+};
+let assignmentLoadingKind = null;
 
 const translations = {
   en: {
@@ -82,11 +90,45 @@ const translations = {
     speechFinished: "Speaker turn finished",
     speechAlreadyActive: "Finish the current speaker before starting another turn.",
     finishSpeechBeforeMeeting: "Finish the current speaker before ending the standup.",
-    speechHistory: "Speaking history",
-    currentStandupTurns: "Current standup turns",
-    noSpeechHistory: "Completed speaker turns will appear here.",
     overLimit: "Over the limit",
     withinLimit: "Within the limit",
+    thisStandup: "This standup",
+    spontaneousTask: "Spontaneous task",
+    currentTaskCopy: "Generate a light task for someone to complete during this call.",
+    drawCurrentTask: "Draw for this standup",
+    nextStandup: "Next standup",
+    preparationTask: "Preparation task",
+    nextTaskCopy: "Generate a small task to prepare and present at the next call.",
+    drawNextTask: "Draw for the next standup",
+    generatingTask: "Generating task…",
+    noTaskYet: "No task has been assigned yet.",
+    startStandupForTask: "Start a standup to draw a current-call task.",
+    remainingInRound: "Remaining in round",
+    roundComplete: "Round complete — the next draw starts a new one",
+    round: "Round",
+    assignedTo: "Assigned to",
+    personal: "Personal",
+    myTasks: "My tasks",
+    noMyTasks: "Tasks assigned to you will appear here.",
+    currentTask: "This standup",
+    nextTask: "Next standup",
+    roomHistory: "Room history",
+    activityLog: "Activity log",
+    noActivity: "Completed talks and assigned tasks will appear here.",
+    spokeFor: "Spoke for",
+    taskAssigned: "Task assigned",
+    assignedBy: "Assigned by",
+    taskGenerated: "Task generated and assigned",
+    taskGenerationFailed: "Could not generate and assign a task. Please try again.",
+    openRouterNotConfigured: "Task generation is not configured on the server.",
+    openRouterAuth: "OpenRouter rejected the API key.",
+    openRouterPayment: "The OpenRouter account has no available credits.",
+    openRouterRate: "OpenRouter rate limit reached. Try again shortly.",
+    openRouterModel: "The selected task model is unavailable.",
+    openRouterBlocked: "The model declined this task. Try generating another one.",
+    openRouterTimeout: "Task generation timed out. Try again.",
+    openRouterUnavailable: "The task model is temporarily unavailable.",
+    invalidModelResponse: "The model returned an invalid task. Try again.",
     notFound: "This room is unavailable or you are not a member.",
     unavailable: "Could not load the room.",
   },
@@ -167,11 +209,45 @@ const translations = {
     speechFinished: "Выступление завершено",
     speechAlreadyActive: "Завершите текущее выступление перед запуском следующего.",
     finishSpeechBeforeMeeting: "Завершите текущее выступление перед окончанием стендапа.",
-    speechHistory: "История выступлений",
-    currentStandupTurns: "Выступления текущего стендапа",
-    noSpeechHistory: "Завершённые выступления появятся здесь.",
     overLimit: "Лимит превышен",
     withinLimit: "В пределах лимита",
+    thisStandup: "На этом стендапе",
+    spontaneousTask: "Импровизационное задание",
+    currentTaskCopy: "Сгенерируйте лёгкое задание, которое участник выполнит во время звонка.",
+    drawCurrentTask: "Выбрать на этот стендап",
+    nextStandup: "Следующий стендап",
+    preparationTask: "Задание на подготовку",
+    nextTaskCopy: "Сгенерируйте небольшое задание для подготовки к следующему звонку.",
+    drawNextTask: "Выбрать на следующий стендап",
+    generatingTask: "Генерируем задание…",
+    noTaskYet: "Задание ещё не выдавалось.",
+    startStandupForTask: "Начните стендап, чтобы выдать задание на текущий звонок.",
+    remainingInRound: "Осталось в круге",
+    roundComplete: "Круг завершён — следующий выбор начнёт новый",
+    round: "Круг",
+    assignedTo: "Задание получает",
+    personal: "Личное",
+    myTasks: "Мои задания",
+    noMyTasks: "Выданные вам задания появятся здесь.",
+    currentTask: "На этом стендапе",
+    nextTask: "К следующему стендапу",
+    roomHistory: "История комнаты",
+    activityLog: "Лог действий",
+    noActivity: "Завершённые выступления и выданные задания появятся здесь.",
+    spokeFor: "Выступление",
+    taskAssigned: "Выдано задание",
+    assignedBy: "Выдал(а)",
+    taskGenerated: "Задание сгенерировано и выдано",
+    taskGenerationFailed: "Не удалось сгенерировать и выдать задание. Попробуйте ещё раз.",
+    openRouterNotConfigured: "Генерация заданий не настроена на сервере.",
+    openRouterAuth: "OpenRouter отклонил API-ключ.",
+    openRouterPayment: "На аккаунте OpenRouter нет доступных средств.",
+    openRouterRate: "Превышен лимит запросов OpenRouter. Попробуйте немного позже.",
+    openRouterModel: "Выбранная модель заданий недоступна.",
+    openRouterBlocked: "Модель отклонила это задание. Попробуйте сгенерировать другое.",
+    openRouterTimeout: "Генерация заняла слишком много времени. Попробуйте ещё раз.",
+    openRouterUnavailable: "Модель заданий временно недоступна.",
+    invalidModelResponse: "Модель вернула некорректное задание. Попробуйте ещё раз.",
     notFound: "Комната недоступна или вы не являетесь её участником.",
     unavailable: "Не удалось загрузить комнату.",
   },
@@ -213,8 +289,14 @@ const speechCopy = document.getElementById("speechCopy");
 const speechActions = document.getElementById("speechActions");
 const speechPauseButton = document.getElementById("speechPauseButton");
 const speechFinishButton = document.getElementById("speechFinishButton");
-const speechHistoryPanel = document.getElementById("speechHistoryPanel");
-const speechHistoryList = document.getElementById("speechHistoryList");
+const currentAssignmentCard = document.getElementById("currentAssignmentCard");
+const currentAssignmentResult = document.getElementById("currentAssignmentResult");
+const currentAssignmentButton = document.getElementById("currentAssignmentButton");
+const nextAssignmentResult = document.getElementById("nextAssignmentResult");
+const nextAssignmentButton = document.getElementById("nextAssignmentButton");
+const myTaskCount = document.getElementById("myTaskCount");
+const myTasksList = document.getElementById("myTasksList");
+const activityHistoryList = document.getElementById("activityHistoryList");
 
 function tr(key) {
   return translations[language][key] || key;
@@ -222,6 +304,10 @@ function tr(key) {
 
 function roleLabel(role) {
   return tr(role === "owner" ? "owner" : role === "admin" ? "admin" : "member");
+}
+
+function localizedTask(assignment) {
+  return language === "ru" ? assignment.taskRu : assignment.taskEn;
 }
 
 function formattedDuration(seconds) {
@@ -245,6 +331,26 @@ function errorMessage(error) {
   if (error?.code === "MEETING_ACTIVE") return tr("finishMeetingBeforeArchive");
   if (error?.code === "SPEECH_ALREADY_ACTIVE") return tr("speechAlreadyActive");
   if (error?.code === "SPEECH_ACTIVE") return tr("finishSpeechBeforeMeeting");
+  const taskErrors = {
+    OPENROUTER_NOT_CONFIGURED: "openRouterNotConfigured",
+    OPENROUTER_AUTH_ERROR: "openRouterAuth",
+    OPENROUTER_FORBIDDEN: "openRouterAuth",
+    OPENROUTER_PAYMENT_REQUIRED: "openRouterPayment",
+    OPENROUTER_RATE_LIMIT: "openRouterRate",
+    OPENROUTER_MODEL_NOT_FOUND: "openRouterModel",
+    OPENROUTER_CONTENT_BLOCKED: "openRouterBlocked",
+    OPENROUTER_TIMEOUT: "openRouterTimeout",
+    OPENROUTER_GATEWAY_TIMEOUT: "openRouterTimeout",
+    OPENROUTER_UNAVAILABLE: "openRouterUnavailable",
+    OPENROUTER_PROVIDER_ERROR: "openRouterUnavailable",
+    OPENROUTER_PROVIDER_OVERLOADED: "openRouterUnavailable",
+    OPENROUTER_INTERNAL_ERROR: "openRouterUnavailable",
+    OPENROUTER_NETWORK_ERROR: "openRouterUnavailable",
+    OPENROUTER_DNS_ERROR: "openRouterUnavailable",
+    OPENROUTER_INVALID_RESPONSE: "invalidModelResponse",
+    INVALID_MODEL_RESPONSE: "invalidModelResponse",
+  };
+  if (taskErrors[error?.code]) return tr(taskErrors[error.code]);
   if (["OWNER_CANNOT_LEAVE", "OWNER_CANNOT_BE_REMOVED", "OWNER_ROLE_IMMUTABLE"].includes(error?.code)) {
     return tr("conflict");
   }
@@ -284,6 +390,7 @@ function applyLanguage(nextLanguage) {
   if (room) renderRoom();
   if (room) renderMeetingState();
   if (room) renderSpeechState();
+  if (room) renderAssignmentState();
 }
 
 function renderRoom() {
@@ -396,7 +503,6 @@ function renderSpeechState() {
   const canManage = room?.role === "owner" || room?.role === "admin";
   speakerCard.classList.toggle("active", Boolean(speech));
   speechStatusDot.classList.toggle("active", speech?.status === "running");
-  speechHistoryPanel.hidden = !activeMeeting;
 
   if (speech) {
     speechStatus.textContent = tr(speech.status === "paused" ? "paused" : "speaking");
@@ -418,26 +524,145 @@ function renderSpeechState() {
     speakerCard.classList.remove("over-limit");
   }
 
-  speechHistoryList.replaceChildren();
-  if (!speechState.recentSpeeches.length) {
+  renderActivityLog();
+}
+
+function assignmentProgress(summary) {
+  if (!summary.available) return tr("startStandupForTask");
+  if (summary.remaining === 0) return tr("roundComplete");
+  return `${tr("remainingInRound")}: ${summary.remaining}/${summary.total} · ${tr("round")} ${summary.cycleNumber}`;
+}
+
+function renderAssignmentResult(container, summary) {
+  container.replaceChildren();
+  const assignment = summary.latestAssignment;
+  if (!assignment) {
+    const placeholder = document.createElement("span");
+    placeholder.className = "assignment-placeholder";
+    placeholder.textContent = "?";
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = tr(summary.available ? "noTaskYet" : "startStandupForTask");
+    const progress = document.createElement("small");
+    progress.textContent = assignmentProgress(summary);
+    copy.append(title, progress);
+    container.append(placeholder, copy);
+    return;
+  }
+
+  const avatar = document.createElement("span");
+  avatar.className = "assignment-avatar";
+  avatar.textContent = assignment.participant.name.slice(0, 1).toUpperCase();
+  const copy = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = `${tr("assignedTo")}: ${assignment.participant.name}`;
+  const task = document.createElement("p");
+  task.textContent = localizedTask(assignment);
+  const progress = document.createElement("small");
+  progress.textContent = assignmentProgress(summary);
+  copy.append(title, task, progress);
+  container.append(avatar, copy);
+}
+
+function renderAssignmentState() {
+  const canManage = room?.role === "owner" || room?.role === "admin";
+  currentAssignmentCard.classList.toggle("unavailable", !assignmentState.currentDraw.available);
+  renderAssignmentResult(currentAssignmentResult, assignmentState.currentDraw);
+  renderAssignmentResult(nextAssignmentResult, assignmentState.nextDraw);
+
+  for (const [button, kind, summary] of [
+    [currentAssignmentButton, "current", assignmentState.currentDraw],
+    [nextAssignmentButton, "next", assignmentState.nextDraw],
+  ]) {
+    button.hidden = !canManage;
+    button.disabled = !summary.available || Boolean(assignmentLoadingKind);
+    button.textContent = tr(assignmentLoadingKind === kind
+      ? "generatingTask"
+      : kind === "current" ? "drawCurrentTask" : "drawNextTask");
+    button.classList.toggle("loading", assignmentLoadingKind === kind);
+  }
+
+  myTaskCount.textContent = String(assignmentState.myAssignments.length);
+  myTasksList.replaceChildren();
+  if (!assignmentState.myAssignments.length) {
     const empty = document.createElement("p");
     empty.className = "meeting-history-empty";
-    empty.textContent = tr("noSpeechHistory");
-    speechHistoryList.append(empty);
+    empty.textContent = tr("noMyTasks");
+    myTasksList.append(empty);
   } else {
-    speechState.recentSpeeches.forEach((completedSpeech) => {
+    assignmentState.myAssignments.forEach((assignment) => {
+      const item = document.createElement("div");
+      item.className = "my-task-item";
+      const meta = document.createElement("div");
+      const kind = document.createElement("span");
+      kind.className = `task-kind task-kind-${assignment.kind}`;
+      kind.textContent = tr(assignment.kind === "current" ? "currentTask" : "nextTask");
+      const date = document.createElement("small");
+      date.textContent = formattedDate(assignment.createdAt);
+      meta.append(kind, date);
+      const task = document.createElement("p");
+      task.textContent = localizedTask(assignment);
+      item.append(meta, task);
+      myTasksList.append(item);
+    });
+  }
+
+  renderActivityLog();
+}
+
+function renderActivityLog() {
+  if (!activityHistoryList) return;
+  const events = [
+    ...speechState.recentSpeeches.map((speech) => ({
+      type: "speech",
+      timestamp: speech.endedAt || speech.startedAt,
+      value: speech,
+    })),
+    ...assignmentState.recentAssignments.map((assignment) => ({
+      type: "assignment",
+      timestamp: assignment.createdAt,
+      value: assignment,
+    })),
+  ].sort((left, right) => right.timestamp - left.timestamp).slice(0, 50);
+
+  activityHistoryList.replaceChildren();
+  if (!events.length) {
+    const empty = document.createElement("p");
+    empty.className = "meeting-history-empty";
+    empty.textContent = tr("noActivity");
+    activityHistoryList.append(empty);
+    return;
+  }
+
+  events.forEach((event) => {
+    if (event.type === "speech") {
+      const completedSpeech = event.value;
       const item = document.createElement("div");
       item.className = `speech-history-item${completedSpeech.overLimit ? " over-limit" : ""}`;
       const speaker = document.createElement("strong");
       speaker.textContent = completedSpeech.speaker.name;
       const details = document.createElement("small");
-      details.textContent = `${formattedDate(completedSpeech.startedAt)} · ${tr(completedSpeech.overLimit ? "overLimit" : "withinLimit")}`;
+      details.textContent = `${formattedDate(event.timestamp)} · ${tr(completedSpeech.overLimit ? "overLimit" : "withinLimit")}`;
       const duration = document.createElement("span");
-      duration.textContent = `${formattedDuration(completedSpeech.accumulatedSeconds)} / ${formattedDuration(completedSpeech.talkLimitSeconds)}`;
+      duration.textContent = `${tr("spokeFor")} ${formattedDuration(completedSpeech.accumulatedSeconds)} / ${formattedDuration(completedSpeech.talkLimitSeconds)}`;
       item.append(speaker, details, duration);
-      speechHistoryList.append(item);
-    });
-  }
+      activityHistoryList.append(item);
+      return;
+    }
+
+    const assignment = event.value;
+    const item = document.createElement("div");
+    item.className = `speech-history-item assignment-activity assignment-${assignment.kind}`;
+    const title = document.createElement("strong");
+    title.textContent = `${tr("taskAssigned")}: ${assignment.participant.name}`;
+    const details = document.createElement("small");
+    details.textContent = `${tr(assignment.kind === "current" ? "currentTask" : "nextTask")} · ${formattedDate(event.timestamp)} · ${tr("assignedBy")} ${assignment.assignedBy.name}`;
+    const task = document.createElement("p");
+    task.className = "activity-task-text";
+    task.textContent = localizedTask(assignment);
+    item.append(title, details, task);
+    activityHistoryList.append(item);
+  });
 }
 
 function renderLiveTimers() {
@@ -491,15 +716,14 @@ function renderMeetingState() {
 
 async function loadMeetingState(showFailure = true) {
   try {
-    const previousMeetingId = meetingState.activeMeeting?.id;
     meetingState = await api(`/api/rooms/${encodeURIComponent(room.id)}/meetings`, {
       cache: "no-store",
     });
-    if (previousMeetingId !== meetingState.activeMeeting?.id) {
-      speechState = { activeSpeech: null, recentSpeeches: [] };
-    }
     renderMeetingState();
-    await loadSpeechState(showFailure);
+    await Promise.all([
+      loadSpeechState(false),
+      loadAssignmentState(false),
+    ]);
     renderRoom();
   } catch (error) {
     if (showFailure && error?.message !== "AUTH_REQUIRED") {
@@ -509,15 +733,9 @@ async function loadMeetingState(showFailure = true) {
 }
 
 async function loadSpeechState(showFailure = true) {
-  const meeting = meetingState.activeMeeting;
-  if (!meeting) {
-    speechState = { activeSpeech: null, recentSpeeches: [] };
-    renderSpeechState();
-    return;
-  }
   try {
     speechState = await api(
-      `/api/rooms/${encodeURIComponent(room.id)}/meetings/${encodeURIComponent(meeting.id)}/speeches`,
+      `/api/rooms/${encodeURIComponent(room.id)}/speeches`,
       { cache: "no-store" },
     );
     renderSpeechState();
@@ -525,6 +743,41 @@ async function loadSpeechState(showFailure = true) {
     if (showFailure && error?.message !== "AUTH_REQUIRED") {
       showToast(tr("meetingUnavailable"), true);
     }
+  }
+}
+
+async function loadAssignmentState(showFailure = true) {
+  try {
+    assignmentState = await api(`/api/rooms/${encodeURIComponent(room.id)}/assignments`, {
+      cache: "no-store",
+    });
+    renderAssignmentState();
+  } catch (error) {
+    if (showFailure && error?.message !== "AUTH_REQUIRED") {
+      showToast(tr("taskGenerationFailed"), true);
+    }
+  }
+}
+
+async function drawRoomAssignment(kind) {
+  if (assignmentLoadingKind) return;
+  assignmentLoadingKind = kind;
+  renderAssignmentState();
+  try {
+    const payload = await api(`/api/rooms/${encodeURIComponent(room.id)}/assignments/draw`, {
+      method: "POST",
+      body: JSON.stringify({ kind }),
+    });
+    assignmentState = payload.state;
+    showToast(`${tr("taskGenerated")}: ${payload.assignment.participant.name}`);
+  } catch (error) {
+    showToast(errorMessage(error) === tr("requestFailed")
+      ? tr("taskGenerationFailed")
+      : errorMessage(error), true);
+    await loadAssignmentState(false);
+  } finally {
+    assignmentLoadingKind = null;
+    renderAssignmentState();
   }
 }
 
@@ -684,6 +937,7 @@ meetingActionButton.addEventListener("click", async () => {
       renderMeetingState();
       renderSpeechState();
       renderRoom();
+      await Promise.all([loadSpeechState(false), loadAssignmentState(false)]);
       showToast(tr("meetingStarted"));
     }
   } catch (error) {
@@ -700,6 +954,14 @@ speechPauseButton.addEventListener("click", () => {
 
 speechFinishButton.addEventListener("click", () => {
   runSpeechAction("finish", speechFinishButton);
+});
+
+currentAssignmentButton.addEventListener("click", () => {
+  drawRoomAssignment("current");
+});
+
+nextAssignmentButton.addEventListener("click", () => {
+  drawRoomAssignment("next");
 });
 
 refreshMeetingButton.addEventListener("click", async () => {

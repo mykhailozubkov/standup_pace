@@ -114,6 +114,34 @@
             </aside>
           </section>
 
+          <section class="room-assignment-grid" aria-label="Team tasks">
+            <article id="currentAssignmentCard" class="panel assignment-card current-assignment-card">
+              <p class="section-kicker" data-i18n="thisStandup">This standup</p>
+              <h2 data-i18n="spontaneousTask">Spontaneous task</h2>
+              <p class="assignment-card-copy" data-i18n="currentTaskCopy">Generate a light task for someone to complete during this call.</p>
+              <div id="currentAssignmentResult" class="assignment-result"></div>
+              <button id="currentAssignmentButton" class="primary-button assignment-draw-button" type="button" hidden data-kind="current" data-i18n="drawCurrentTask">Draw for this standup</button>
+            </article>
+
+            <article id="nextAssignmentCard" class="panel assignment-card next-assignment-card">
+              <p class="section-kicker" data-i18n="nextStandup">Next standup</p>
+              <h2 data-i18n="preparationTask">Preparation task</h2>
+              <p class="assignment-card-copy" data-i18n="nextTaskCopy">Generate a small task to prepare and present at the next call.</p>
+              <div id="nextAssignmentResult" class="assignment-result"></div>
+              <button id="nextAssignmentButton" class="primary-button assignment-draw-button" type="button" hidden data-kind="next" data-i18n="drawNextTask">Draw for the next standup</button>
+            </article>
+          </section>
+
+          <section class="panel my-tasks-panel" aria-labelledby="myTasksTitle">
+            <div class="panel-header">
+              <div>
+                <p class="section-kicker" data-i18n="personal">Personal</p>
+                <h2 id="myTasksTitle"><span data-i18n="myTasks">My tasks</span> <span id="myTaskCount" class="count-pill">0</span></h2>
+              </div>
+            </div>
+            <div id="myTasksList" class="my-tasks-list"></div>
+          </section>
+
           <section class="panel meeting-history-panel" aria-labelledby="meetingHistoryTitle">
             <div class="panel-header">
               <div>
@@ -124,14 +152,14 @@
             <div id="meetingHistoryList" class="meeting-history-list"></div>
           </section>
 
-          <section id="speechHistoryPanel" class="panel speech-history-panel" aria-labelledby="speechHistoryTitle" hidden>
+          <section id="activityHistoryPanel" class="panel speech-history-panel" aria-labelledby="activityHistoryTitle">
             <div class="panel-header">
               <div>
-                <p class="section-kicker" data-i18n="speechHistory">Speaking history</p>
-                <h2 id="speechHistoryTitle" data-i18n="currentStandupTurns">Current standup turns</h2>
+                <p class="section-kicker" data-i18n="roomHistory">Room history</p>
+                <h2 id="activityHistoryTitle" data-i18n="activityLog">Activity log</h2>
               </div>
             </div>
-            <div id="speechHistoryList" class="speech-history-list"></div>
+            <div id="activityHistoryList" class="speech-history-list"></div>
           </section>
         </div>
       </main>
