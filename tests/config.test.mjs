@@ -12,4 +12,9 @@ test("keeps Worker routing in control of protected HTML pages", async () => {
   assert.equal(config.workers_dev, true);
   assert.ok(config.compatibility_flags.includes("nodejs_compat"));
   assert.equal(config.d1_databases?.[0]?.binding, "DB");
+  assert.deepEqual(config.durable_objects?.bindings, [{
+    name: "ROOM_SYNC",
+    class_name: "RoomSync",
+  }]);
+  assert.deepEqual(config.migrations?.[0]?.new_sqlite_classes, ["RoomSync"]);
 });

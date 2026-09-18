@@ -11,6 +11,11 @@ let assignmentState = {
   myAssignments: [],
 };
 let assignmentLoadingKind = null;
+let roomSocket = null;
+let roomSocketRetry = 0;
+let roomSocketRetryTimer = null;
+let realtimeRefreshTimer = null;
+let realtimeStopped = false;
 
 const translations = {
   en: {
@@ -371,6 +376,60 @@ async function api(path, options = {}) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw Object.assign(new Error(payload.code || "REQUEST_FAILED"), payload);
   return payload;
+}
+
+function scheduleRealtimeRefresh() {
+  if (realtimeRefreshTimer || document.visibilityState !== "visible") return;
+  realtimeRefreshTimer = window.setTimeout(async () => {
+    realtimeRefreshTimer = null;
+    await loadRoom();
+  }, 150);
+}
+
+function scheduleRoomSocketReconnect() {
+  if (realtimeStopped || !room || roomSocketRetryTimer) return;
+  const delay = Math.min(15_000, 1_000 * (2 ** roomSocketRetry));
+  roomSocketRetry = Math.min(roomSocketRetry + 1, 4);
+  roomSocketRetryTimer = window.setTimeout(() => {
+    roomSocketRetryTimer = null;
+    connectRoomRealtime();
+  }, delay);
+}
+
+function connectRoomRealtime() {
+  if (!room || realtimeStopped) return;
+  if (roomSocket && [WebSocket.CONNECTING, WebSocket.OPEN].includes(roomSocket.readyState)) return;
+
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  const socket = new WebSocket(
+    `${protocol}//${location.host}/api/rooms/${encodeURIComponent(room.id)}/live`,
+  );
+  roomSocket = socket;
+
+  socket.addEventListener("open", () => {
+    roomSocketRetry = 0;
+    scheduleRealtimeRefresh();
+  });
+  socket.addEventListener("message", (event) => {
+    if (event.data === "pong") return;
+    try {
+      const roomEvent = JSON.parse(event.data);
+      if (roomEvent.roomId === room?.id) scheduleRealtimeRefresh();
+    } catch {
+      // Ignore unknown messages and keep the connection alive.
+    }
+  });
+  socket.addEventListener("close", () => {
+    if (roomSocket === socket) roomSocket = null;
+    scheduleRoomSocketReconnect();
+  });
+  socket.addEventListener("error", () => {
+    try {
+      socket.close();
+    } catch {
+      // The browser may already have closed the connection.
+    }
+  });
 }
 
 function applyLanguage(nextLanguage) {
@@ -879,6 +938,10 @@ async function loadRoom() {
     }
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
+      if (response.status === 404 && room) {
+        window.location.assign("/dashboard");
+        return;
+      }
       loading.textContent = tr(response.status === 404 ? "notFound" : "unavailable");
       loading.classList.add("error-copy");
       return;
@@ -888,6 +951,7 @@ async function loadRoom() {
     content.hidden = false;
     renderRoom();
     await loadMeetingState();
+    connectRoomRealtime();
   } catch {
     loading.textContent = tr("unavailable");
     loading.classList.add("error-copy");
@@ -1015,5 +1079,19 @@ applyLanguage(language);
 loadRoom();
 setInterval(renderLiveTimers, 1000);
 setInterval(() => {
-  if (room && document.visibilityState === "visible") loadMeetingState(false);
-}, 10_000);
+  const connected = roomSocket?.readyState === WebSocket.OPEN;
+  if (room && !connected && document.visibilityState === "visible") loadRoom();
+}, 30_000);
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || !room) return;
+  connectRoomRealtime();
+  scheduleRealtimeRefresh();
+});
+
+window.addEventListener("beforeunload", () => {
+  realtimeStopped = true;
+  if (roomSocketRetryTimer) window.clearTimeout(roomSocketRetryTimer);
+  if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+  roomSocket?.close();
+});

@@ -52,6 +52,11 @@ test("serves the public account page and protects the workspace", async () => {
 
   const dashboard = await worker.fetch(request("/dashboard"), env);
   assert.equal(dashboard.status, 302);
+
+  const live = await worker.fetch(request(
+    "/api/rooms/688285e9-dbea-4b57-bf5c-a283ccca9716/live",
+  ), env);
+  assert.equal(live.status, 401);
 });
 
 test("registers a user and exposes the protected workspace", async () => {

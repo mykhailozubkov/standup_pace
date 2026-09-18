@@ -16,6 +16,20 @@
     "OPENROUTER_MODEL": "openrouter/free",
     "PUBLIC_APP_URL": "https://standup-helper.mykhailo-zubkov.workers.dev"
   },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ROOM_SYNC",
+        "class_name": "RoomSync"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1-room-sync",
+      "new_sqlite_classes": ["RoomSync"]
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

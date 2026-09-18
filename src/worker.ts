@@ -27,6 +27,13 @@ import {
   updateMemberRole,
   updateRoom,
 } from "./rooms.ts";
+import {
+  connectRoomSocket,
+  publishRoomEvent,
+  RoomSync,
+} from "./realtime.ts";
+
+export { RoomSync };
 
 type AppContext = { Bindings: Env };
 
@@ -160,6 +167,7 @@ async function handleCreateRoom(request: Request, env: Env) {
 async function handleJoinRoom(request: Request, env: Env) {
   const session = await requireAuthSession(request, env);
   const room = await joinRoom(env, session.user, await readJson(request, 2_048));
+  await publishRoomEvent(env, room.id, "membership.updated");
   return sendJson(200, { room });
 }
 
@@ -171,6 +179,7 @@ async function handleGetRoom(request: Request, env: Env, roomId: string) {
 async function handleUpdateRoom(request: Request, env: Env, roomId: string) {
   const session = await requireAuthSession(request, env);
   const room = await updateRoom(env, roomId, session.user.id, await readJson(request, 4_096));
+  await publishRoomEvent(env, roomId, "room.updated");
   return sendJson(200, { room });
 }
 
@@ -188,6 +197,7 @@ async function handleUpdateMemberRole(
     memberId,
     await readJson(request, 2_048),
   );
+  await publishRoomEvent(env, roomId, "membership.updated");
   return sendJson(200, { room });
 }
 
@@ -198,12 +208,16 @@ async function handleRemoveRoomMember(
   memberId: string,
 ) {
   const session = await requireAuthSession(request, env);
-  return sendJson(200, await removeRoomMember(env, roomId, session.user.id, memberId));
+  const result = await removeRoomMember(env, roomId, session.user.id, memberId);
+  await publishRoomEvent(env, roomId, "membership.updated");
+  return sendJson(200, result);
 }
 
 async function handleArchiveRoom(request: Request, env: Env, roomId: string) {
   const session = await requireAuthSession(request, env);
-  return sendJson(200, await archiveRoom(env, roomId, session.user.id));
+  const result = await archiveRoom(env, roomId, session.user.id);
+  await publishRoomEvent(env, roomId, "room.updated");
+  return sendJson(200, result);
 }
 
 async function handleListMeetings(request: Request, env: Env, roomId: string) {
@@ -213,7 +227,9 @@ async function handleListMeetings(request: Request, env: Env, roomId: string) {
 
 async function handleStartMeeting(request: Request, env: Env, roomId: string) {
   const session = await requireAuthSession(request, env);
-  return sendJson(201, { meeting: await startMeeting(env, roomId, session.user.id) });
+  const meeting = await startMeeting(env, roomId, session.user.id);
+  await publishRoomEvent(env, roomId, "meeting.updated");
+  return sendJson(201, { meeting });
 }
 
 async function handleEndMeeting(
@@ -223,8 +239,10 @@ async function handleEndMeeting(
   meetingId: string,
 ) {
   const session = await requireAuthSession(request, env);
+  const meeting = await endMeeting(env, roomId, meetingId, session.user.id);
+  await publishRoomEvent(env, roomId, "meeting.updated");
   return sendJson(200, {
-    meeting: await endMeeting(env, roomId, meetingId, session.user.id),
+    meeting,
   });
 }
 
@@ -252,6 +270,7 @@ async function handleStartSpeech(
     session.user.id,
     await readJson(request, 2_048),
   );
+  await publishRoomEvent(env, roomId, "speech.updated");
   return sendJson(201, { speech });
 }
 
@@ -269,8 +288,10 @@ async function handleSpeechAction(
     : action === "resume"
       ? resumeSpeech
       : finishSpeech;
+  const speech = await actionHandler(env, roomId, meetingId, speechId, session.user.id);
+  await publishRoomEvent(env, roomId, "speech.updated");
   return sendJson(200, {
-    speech: await actionHandler(env, roomId, meetingId, speechId, session.user.id),
+    speech,
   });
 }
 
@@ -293,7 +314,14 @@ async function handleDrawAssignment(request: Request, env: Env, roomId: string) 
     await readJson(request, 2_048),
     new URL(request.url).origin,
   );
+  await publishRoomEvent(env, roomId, "assignment.updated");
   return sendJson(201, result);
+}
+
+async function handleRoomLive(request: Request, env: Env, roomId: string) {
+  const session = await requireAuthSession(request, env);
+  await getRoom(env, roomId, session.user.id);
+  return connectRoomSocket(env, roomId, request);
 }
 
 async function assetResponse(env: Env, request: Request, pathname: string) {
@@ -449,6 +477,13 @@ app.get("/api/rooms/:roomId/assignments", (context) => handleListAssignments(
 ));
 app.all("/api/rooms/:roomId/assignments", () => methodNotAllowed("GET"));
 
+app.get("/api/rooms/:roomId/live", (context) => handleRoomLive(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+));
+app.all("/api/rooms/:roomId/live", () => methodNotAllowed("GET"));
+
 app.get("/api/rooms/:roomId/speeches", (context) => handleListRoomSpeeches(
   context.req.raw,
   context.env,
@@ -493,6 +528,8 @@ app.onError((error) => {
 
 export default {
   async fetch(request: Request, env: Env, executionContext: ExecutionContext): Promise<Response> {
-    return withSecurityHeaders(await app.fetch(request, env, executionContext), request);
+    const response = await app.fetch(request, env, executionContext);
+    if (response.status === 101) return response;
+    return withSecurityHeaders(response, request);
   },
 } satisfies ExportedHandler<Env>;
