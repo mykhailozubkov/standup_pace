@@ -40,6 +40,21 @@ async function signUp(env, user = {
   return response.headers.get("set-cookie").split(";")[0];
 }
 
+function quizPayload(title = "Engineering quiz") {
+  return {
+    title,
+    description: "Test your platform knowledge",
+    questions: [{
+      prompt: "Which service stores relational data?",
+      timeLimitSeconds: 20,
+      options: [
+        { text: "D1", isCorrect: true },
+        { text: "R2", isCorrect: false },
+      ],
+    }],
+  };
+}
+
 test("serves the public account page and protects the workspace", async () => {
   const env = await testEnv();
   const login = await worker.fetch(request("/"), env);
@@ -112,6 +127,68 @@ test("creates and joins rooms through authenticated APIs", async () => {
   }), env);
   assert.equal(detailResponse.status, 200);
   assert.equal((await detailResponse.json()).room.members.length, 2);
+});
+
+test("manages quiz drafts through authenticated room APIs", async () => {
+  const env = await testEnv();
+  const ownerCookie = await signUp(env);
+  const memberCookie = await signUp(env, {
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    password: "analytical engine 1843",
+  });
+  const createdRoomResponse = await worker.fetch(request("/api/rooms", {
+    method: "POST",
+    headers: { Cookie: ownerCookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Quiz room" }),
+  }), env);
+  const room = (await createdRoomResponse.json()).room;
+  await worker.fetch(request("/api/rooms/join", {
+    method: "POST",
+    headers: { Cookie: memberCookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ joinCode: room.joinCode }),
+  }), env);
+
+  const createResponse = await worker.fetch(request(`/api/rooms/${room.id}/quizzes`, {
+    method: "POST",
+    headers: { Cookie: ownerCookie, "Content-Type": "application/json" },
+    body: JSON.stringify(quizPayload()),
+  }), env);
+  assert.equal(createResponse.status, 201);
+  const created = (await createResponse.json()).quiz;
+  assert.equal(created.questions[0].options[0].isCorrect, true);
+
+  const listResponse = await worker.fetch(request(`/api/rooms/${room.id}/quizzes`, {
+    headers: { Cookie: memberCookie },
+  }), env);
+  assert.equal(listResponse.status, 200);
+  const summary = (await listResponse.json()).quizzes[0];
+  assert.equal(summary.questionCount, 1);
+  assert.equal("questions" in summary, false);
+
+  const hiddenDetail = await worker.fetch(request(
+    `/api/rooms/${room.id}/quizzes/${created.id}`,
+    { headers: { Cookie: memberCookie } },
+  ), env);
+  assert.equal(hiddenDetail.status, 403);
+
+  const updateResponse = await worker.fetch(request(
+    `/api/rooms/${room.id}/quizzes/${created.id}`,
+    {
+      method: "PATCH",
+      headers: { Cookie: ownerCookie, "Content-Type": "application/json" },
+      body: JSON.stringify(quizPayload("Updated engineering quiz")),
+    },
+  ), env);
+  assert.equal(updateResponse.status, 200);
+  assert.equal((await updateResponse.json()).quiz.title, "Updated engineering quiz");
+
+  const archiveResponse = await worker.fetch(request(
+    `/api/rooms/${room.id}/quizzes/${created.id}`,
+    { method: "DELETE", headers: { Cookie: ownerCookie } },
+  ), env);
+  assert.equal(archiveResponse.status, 200);
+  assert.equal((await archiveResponse.json()).archived, true);
 });
 
 test("manages room settings, roles, membership, and archiving through the API", async () => {
@@ -333,4 +410,18 @@ test("keeps explicit method guards and security headers", async () => {
   ), env);
   assert.equal(assignments.status, 405);
   assert.equal(assignments.headers.get("allow"), "GET");
+
+  const quizzes = await worker.fetch(request(
+    "/api/rooms/room-id/quizzes",
+    { method: "PUT" },
+  ), env);
+  assert.equal(quizzes.status, 405);
+  assert.equal(quizzes.headers.get("allow"), "GET, POST");
+
+  const quiz = await worker.fetch(request(
+    "/api/rooms/room-id/quizzes/quiz-id",
+    { method: "POST" },
+  ), env);
+  assert.equal(quiz.status, 405);
+  assert.equal(quiz.headers.get("allow"), "GET, PATCH, DELETE");
 });

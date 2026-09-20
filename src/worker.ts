@@ -32,6 +32,13 @@ import {
   publishRoomEvent,
   RoomSync,
 } from "./realtime.ts";
+import {
+  archiveQuiz,
+  createQuiz,
+  getQuiz,
+  listQuizzes,
+  updateQuiz,
+} from "./quizzes.ts";
 
 export { RoomSync };
 
@@ -324,6 +331,48 @@ async function handleRoomLive(request: Request, env: Env, roomId: string) {
   return connectRoomSocket(env, roomId, request);
 }
 
+async function handleListQuizzes(request: Request, env: Env, roomId: string) {
+  const session = await requireAuthSession(request, env);
+  return sendJson(200, { quizzes: await listQuizzes(env, roomId, session.user.id) });
+}
+
+async function handleCreateQuiz(request: Request, env: Env, roomId: string) {
+  const session = await requireAuthSession(request, env);
+  const quiz = await createQuiz(
+    env,
+    roomId,
+    session.user.id,
+    await readJson(request, 262_144),
+  );
+  await publishRoomEvent(env, roomId, "quiz.updated");
+  return sendJson(201, { quiz });
+}
+
+async function handleGetQuiz(request: Request, env: Env, roomId: string, quizId: string) {
+  const session = await requireAuthSession(request, env);
+  return sendJson(200, { quiz: await getQuiz(env, roomId, quizId, session.user.id) });
+}
+
+async function handleUpdateQuiz(request: Request, env: Env, roomId: string, quizId: string) {
+  const session = await requireAuthSession(request, env);
+  const quiz = await updateQuiz(
+    env,
+    roomId,
+    quizId,
+    session.user.id,
+    await readJson(request, 262_144),
+  );
+  await publishRoomEvent(env, roomId, "quiz.updated");
+  return sendJson(200, { quiz });
+}
+
+async function handleArchiveQuiz(request: Request, env: Env, roomId: string, quizId: string) {
+  const session = await requireAuthSession(request, env);
+  const result = await archiveQuiz(env, roomId, quizId, session.user.id);
+  await publishRoomEvent(env, roomId, "quiz.updated");
+  return sendJson(200, result);
+}
+
 async function assetResponse(env: Env, request: Request, pathname: string) {
   const assetUrl = new URL(request.url);
   assetUrl.pathname = pathname;
@@ -476,6 +525,38 @@ app.get("/api/rooms/:roomId/assignments", (context) => handleListAssignments(
   context.req.param("roomId"),
 ));
 app.all("/api/rooms/:roomId/assignments", () => methodNotAllowed("GET"));
+
+app.get("/api/rooms/:roomId/quizzes", (context) => handleListQuizzes(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+));
+app.post("/api/rooms/:roomId/quizzes", (context) => handleCreateQuiz(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+));
+app.all("/api/rooms/:roomId/quizzes", () => methodNotAllowed("GET, POST"));
+
+app.get("/api/rooms/:roomId/quizzes/:quizId", (context) => handleGetQuiz(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+  context.req.param("quizId"),
+));
+app.patch("/api/rooms/:roomId/quizzes/:quizId", (context) => handleUpdateQuiz(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+  context.req.param("quizId"),
+));
+app.delete("/api/rooms/:roomId/quizzes/:quizId", (context) => handleArchiveQuiz(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+  context.req.param("quizId"),
+));
+app.all("/api/rooms/:roomId/quizzes/:quizId", () => methodNotAllowed("GET, PATCH, DELETE"));
 
 app.get("/api/rooms/:roomId/live", (context) => handleRoomLive(
   context.req.raw,

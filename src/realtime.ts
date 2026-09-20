@@ -7,6 +7,7 @@ export const ROOM_EVENT_TYPES = [
   "meeting.updated",
   "speech.updated",
   "assignment.updated",
+  "quiz.updated",
 ] as const;
 
 export type RoomEventType = typeof ROOM_EVENT_TYPES[number];

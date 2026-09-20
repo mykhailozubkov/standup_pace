@@ -9,6 +9,7 @@ const rateLimitMigrationUrl = new URL("../migrations/0003_add_auth_rate_limit.sq
 const meetingMigrationUrl = new URL("../migrations/0004_create_meetings.sql", import.meta.url);
 const speechMigrationUrl = new URL("../migrations/0005_create_speeches.sql", import.meta.url);
 const assignmentMigrationUrl = new URL("../migrations/0006_create_assignments.sql", import.meta.url);
+const quizMigrationUrl = new URL("../migrations/0007_create_quizzes.sql", import.meta.url);
 
 test("the initial D1 migration creates the room data model", async () => {
   const database = new DatabaseSync(":memory:");
@@ -244,4 +245,47 @@ test("the assignment migration separates current-call and preparation task round
     "assignments_history_by_room",
     "assignments_next_cycle_participant",
   ]);
+});
+
+test("the quiz migration models reusable validated question templates", async () => {
+  const database = new DatabaseSync(":memory:");
+  database.exec(await readFile(migrationUrl, "utf8"));
+  database.exec(await readFile(quizMigrationUrl, "utf8"));
+
+  database.prepare("INSERT INTO user_profiles (user_id, display_name) VALUES (?, ?)")
+    .run("user-1", "Ada");
+  database.prepare(`
+    INSERT INTO rooms (id, owner_user_id, name, join_code)
+    VALUES (?, ?, ?, ?)
+  `).run("room-1", "user-1", "Platform", "ROOM42");
+  database.prepare(`
+    INSERT INTO quizzes (
+      id, room_id, title, created_by_user_id, updated_by_user_id
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run("quiz-1", "room-1", "Engineering", "user-1", "user-1");
+  database.prepare(`
+    INSERT INTO quiz_questions (id, quiz_id, position, prompt, time_limit_seconds)
+    VALUES (?, ?, ?, ?, ?)
+  `).run("question-1", "quiz-1", 1, "What is D1?", 20);
+
+  const insertOption = database.prepare(`
+    INSERT INTO quiz_options (id, question_id, position, text, is_correct)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  insertOption.run("option-1", "question-1", 1, "A database", 1);
+  insertOption.run("option-2", "question-1", 2, "A queue", 0);
+  assert.throws(() => insertOption.run(
+    "option-3", "question-1", 3, "Another database", 1,
+  ), /UNIQUE/);
+  assert.throws(() => database.prepare(`
+    INSERT INTO quiz_questions (id, quiz_id, position, prompt, time_limit_seconds)
+    VALUES (?, ?, ?, ?, ?)
+  `).run("question-2", "quiz-1", 2, "Too fast", 2), /CHECK/);
+
+  const tables = database.prepare(`
+    SELECT name FROM sqlite_schema
+    WHERE type = 'table' AND name LIKE 'quiz%'
+    ORDER BY name
+  `).all().map(({ name }) => name);
+  assert.deepEqual(tables, ["quiz_options", "quiz_questions", "quizzes"]);
 });
