@@ -11,6 +11,7 @@ let assignmentState = {
   myAssignments: [],
 };
 let assignmentLoadingKind = null;
+let quizzes = [];
 let roomSocket = null;
 let roomSocketRetry = 0;
 let roomSocketRetryTimer = null;
@@ -24,7 +25,7 @@ const translations = {
     allRooms: "All rooms",
     loading: "Loading room…",
     room: "Room",
-    roomCopy: "The shared space for participants, speaking time, tasks, and future quizzes.",
+    roomCopy: "The shared space for participants, speaking time, tasks, and team quizzes.",
     inviteCode: "Invitation code",
     copyCode: "Copy code",
     copied: "Code copied",
@@ -134,6 +135,22 @@ const translations = {
     openRouterTimeout: "Task generation timed out. Try again.",
     openRouterUnavailable: "The task model is temporarily unavailable.",
     invalidModelResponse: "The model returned an invalid task. Try again.",
+    quizLibrary: "Quiz library",
+    quizzes: "Quizzes",
+    quizzesCopy: "Prepare reusable question sets for future live games in this room.",
+    createQuiz: "Create quiz",
+    noQuizzes: "No quizzes yet",
+    noQuizzesCopy: "Room administrators can prepare the first question set.",
+    quizTemplate: "Draft template",
+    questionsOne: "question",
+    questionsFew: "questions",
+    questionsMany: "questions",
+    updatedBy: "Updated by",
+    editQuiz: "Edit",
+    archiveQuiz: "Archive",
+    archiveQuizConfirm: "Archive this quiz? It will disappear from the room list.",
+    quizArchived: "Quiz archived",
+    quizLoadFailed: "Could not load quizzes.",
     notFound: "This room is unavailable or you are not a member.",
     unavailable: "Could not load the room.",
   },
@@ -143,7 +160,7 @@ const translations = {
     allRooms: "Все комнаты",
     loading: "Загружаем комнату…",
     room: "Комната",
-    roomCopy: "Общее пространство для участников, времени выступлений, заданий и будущих викторин.",
+    roomCopy: "Общее пространство для участников, времени выступлений, заданий и командных викторин.",
     inviteCode: "Код приглашения",
     copyCode: "Скопировать код",
     copied: "Код скопирован",
@@ -253,6 +270,22 @@ const translations = {
     openRouterTimeout: "Генерация заняла слишком много времени. Попробуйте ещё раз.",
     openRouterUnavailable: "Модель заданий временно недоступна.",
     invalidModelResponse: "Модель вернула некорректное задание. Попробуйте ещё раз.",
+    quizLibrary: "Библиотека викторин",
+    quizzes: "Викторины",
+    quizzesCopy: "Подготовьте наборы вопросов для будущих игр в этой комнате.",
+    createQuiz: "Создать викторину",
+    noQuizzes: "Викторин пока нет",
+    noQuizzesCopy: "Администраторы комнаты могут подготовить первый набор вопросов.",
+    quizTemplate: "Черновик",
+    questionsOne: "вопрос",
+    questionsFew: "вопроса",
+    questionsMany: "вопросов",
+    updatedBy: "Обновил(а)",
+    editQuiz: "Редактировать",
+    archiveQuiz: "Архивировать",
+    archiveQuizConfirm: "Архивировать эту викторину? Она исчезнет из списка комнаты.",
+    quizArchived: "Викторина архивирована",
+    quizLoadFailed: "Не удалось загрузить викторины.",
     notFound: "Комната недоступна или вы не являетесь её участником.",
     unavailable: "Не удалось загрузить комнату.",
   },
@@ -302,6 +335,9 @@ const nextAssignmentButton = document.getElementById("nextAssignmentButton");
 const myTaskCount = document.getElementById("myTaskCount");
 const myTasksList = document.getElementById("myTasksList");
 const activityHistoryList = document.getElementById("activityHistoryList");
+const quizCount = document.getElementById("quizCount");
+const quizzesList = document.getElementById("quizzesList");
+const createQuizLink = document.getElementById("createQuizLink");
 
 function tr(key) {
   return translations[language][key] || key;
@@ -450,6 +486,7 @@ function applyLanguage(nextLanguage) {
   if (room) renderMeetingState();
   if (room) renderSpeechState();
   if (room) renderAssignmentState();
+  if (room) renderQuizzes();
 }
 
 function renderRoom() {
@@ -530,6 +567,109 @@ function formattedDate(epochSeconds) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(epochSeconds * 1000));
+}
+
+function quizQuestionLabel(count) {
+  if (language !== "ru") return `${count} ${tr(count === 1 ? "questionsOne" : "questionsMany")}`;
+  const lastTwo = count % 100;
+  const last = count % 10;
+  const key = lastTwo >= 11 && lastTwo <= 14
+    ? "questionsMany"
+    : last === 1
+      ? "questionsOne"
+      : last >= 2 && last <= 4 ? "questionsFew" : "questionsMany";
+  return `${count} ${tr(key)}`;
+}
+
+function renderQuizzes() {
+  if (!quizzesList || !room) return;
+  const canManage = room.role === "owner" || room.role === "admin";
+  quizCount.textContent = String(quizzes.length);
+  createQuizLink.hidden = !canManage;
+  createQuizLink.href = `/rooms/${encodeURIComponent(room.id)}/quizzes/new`;
+  quizzesList.replaceChildren();
+
+  if (!quizzes.length) {
+    const empty = document.createElement("div");
+    empty.className = "quiz-empty-state";
+    const title = document.createElement("strong");
+    title.textContent = tr("noQuizzes");
+    const copy = document.createElement("p");
+    copy.textContent = tr("noQuizzesCopy");
+    empty.append(title, copy);
+    quizzesList.append(empty);
+    return;
+  }
+
+  quizzes.forEach((quiz) => {
+    const card = document.createElement("article");
+    card.className = "quiz-summary-card";
+    const heading = document.createElement("div");
+    heading.className = "quiz-summary-heading";
+    const title = document.createElement("h3");
+    title.textContent = quiz.title;
+    const status = document.createElement("span");
+    status.className = "task-kind";
+    status.textContent = tr("quizTemplate");
+    heading.append(title, status);
+
+    const description = document.createElement("p");
+    description.textContent = quiz.description || tr("quizzesCopy");
+    const meta = document.createElement("div");
+    meta.className = "quiz-summary-meta";
+    const count = document.createElement("span");
+    count.textContent = quizQuestionLabel(quiz.questionCount);
+    const updated = document.createElement("span");
+    updated.textContent = `${tr("updatedBy")} ${quiz.updatedBy.name} · ${formattedDate(quiz.updatedAt)}`;
+    meta.append(count, updated);
+    card.append(heading, description, meta);
+
+    if (canManage) {
+      const actions = document.createElement("div");
+      actions.className = "quiz-summary-actions";
+      const edit = document.createElement("a");
+      edit.className = "secondary-button quiz-edit-link";
+      edit.href = `/rooms/${encodeURIComponent(room.id)}/quizzes/${encodeURIComponent(quiz.id)}/edit`;
+      edit.textContent = tr("editQuiz");
+      const archive = document.createElement("button");
+      archive.className = "danger-button";
+      archive.type = "button";
+      archive.textContent = tr("archiveQuiz");
+      archive.addEventListener("click", () => archiveRoomQuiz(quiz, archive));
+      actions.append(edit, archive);
+      card.append(actions);
+    }
+    quizzesList.append(card);
+  });
+}
+
+async function loadQuizzes(showFailure = true) {
+  if (!room) return;
+  try {
+    const payload = await api(`/api/rooms/${encodeURIComponent(room.id)}/quizzes`, {
+      cache: "no-store",
+    });
+    quizzes = payload.quizzes || [];
+    renderQuizzes();
+  } catch (error) {
+    if (showFailure && error?.message !== "AUTH_REQUIRED") showToast(tr("quizLoadFailed"), true);
+  }
+}
+
+async function archiveRoomQuiz(quiz, button) {
+  if (!window.confirm(tr("archiveQuizConfirm"))) return;
+  button.disabled = true;
+  try {
+    await api(`/api/rooms/${encodeURIComponent(room.id)}/quizzes/${encodeURIComponent(quiz.id)}`, {
+      method: "DELETE",
+    });
+    quizzes = quizzes.filter(({ id }) => id !== quiz.id);
+    renderQuizzes();
+    showToast(tr("quizArchived"));
+  } catch (error) {
+    button.disabled = false;
+    showToast(errorMessage(error), true);
+  }
 }
 
 function renderMeetingElapsed() {
@@ -950,7 +1090,7 @@ async function loadRoom() {
     loading.hidden = true;
     content.hidden = false;
     renderRoom();
-    await loadMeetingState();
+    await Promise.all([loadMeetingState(), loadQuizzes()]);
     connectRoomRealtime();
   } catch {
     loading.textContent = tr("unavailable");

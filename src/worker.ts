@@ -414,7 +414,18 @@ async function handlePage(request: Request, env: Env, pathname: string) {
     return assetResponse(env, request, "/room.html");
   }
 
+  if (/^\/rooms\/[0-9a-f-]{36}\/quizzes\/(?:new|[0-9a-f-]{36}\/edit)\/?$/i.test(pathname)) {
+    const session = await sessionState(request, env);
+    if (!session.authenticated) return Response.redirect(new URL("/", request.url).toString(), 302);
+    return assetResponse(env, request, "/quiz-editor.html");
+  }
+
   if (pathname === "/room.html") {
+    const session = await sessionState(request, env);
+    return Response.redirect(new URL(session.authenticated ? "/dashboard" : "/", request.url).toString(), 302);
+  }
+
+  if (pathname === "/quiz-editor.html") {
     const session = await sessionState(request, env);
     return Response.redirect(new URL(session.authenticated ? "/dashboard" : "/", request.url).toString(), 302);
   }

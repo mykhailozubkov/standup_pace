@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Create or edit a Standup Helper quiz" />
+    <title>Standup Helper — quiz editor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell quiz-editor-shell">
+      <header class="topbar">
+        <a class="brand" href="/dashboard" aria-label="Standup Helper">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>Standup Helper</span>
+        </a>
+        <div class="topbar-actions">
+          <a id="backToRoomLink" class="header-link" href="/dashboard" data-i18n="backToRoom">Back to room</a>
+          <div class="language-switcher" role="group" aria-label="Language">
+            <button type="button" data-language="en" class="active">EN</button>
+            <button type="button" data-language="ru">RU</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="quiz-editor-main">
+        <section id="editorLoading" class="room-loading" data-i18n="loading">Loading quiz editor…</section>
+        <div id="editorContent" hidden>
+          <section class="quiz-editor-hero">
+            <div>
+              <p class="eyebrow" data-i18n="quizBuilder">Quiz builder</p>
+              <h1 id="editorHeading" data-i18n="createHeading">Create a quiz</h1>
+              <p data-i18n="editorCopy">Build the questions now. Live lobby and gameplay controls will be added in the next stage.</p>
+            </div>
+            <span id="editorModeBadge" class="role-pill role-admin" data-i18n="draft">Draft</span>
+          </section>
+
+          <form id="quizForm" novalidate>
+            <section class="panel quiz-details-panel">
+              <div class="quiz-field">
+                <label for="quizTitleInput" data-i18n="quizTitle">Quiz title</label>
+                <input id="quizTitleInput" maxlength="120" autocomplete="off" required data-i18n-placeholder="titlePlaceholder" placeholder="Team knowledge quiz" />
+              </div>
+              <div class="quiz-field">
+                <label for="quizDescriptionInput" data-i18n="quizDescription">Description</label>
+                <textarea id="quizDescriptionInput" maxlength="1000" rows="3" data-i18n-placeholder="descriptionPlaceholder" placeholder="What should participants expect?"></textarea>
+              </div>
+            </section>
+
+            <section class="quiz-questions-section" aria-labelledby="questionsTitle">
+              <div class="quiz-questions-heading">
+                <div>
+                  <p class="section-kicker" data-i18n="content">Content</p>
+                  <h2 id="questionsTitle"><span data-i18n="questions">Questions</span> <span id="questionCount" class="count-pill">1</span></h2>
+                </div>
+                <button id="addQuestionButton" class="secondary-button" type="button" data-i18n="addQuestion">Add question</button>
+              </div>
+              <div id="questionsList" class="quiz-questions-list"></div>
+            </section>
+
+            <p id="editorMessage" class="quiz-editor-message" role="alert" aria-live="polite"></p>
+            <div class="quiz-editor-actions">
+              <a id="cancelEditorLink" class="secondary-button quiz-cancel-link" href="/dashboard" data-i18n="cancel">Cancel</a>
+              <button id="saveQuizButton" class="primary-button" type="submit" data-i18n="saveQuiz">Save quiz</button>
+            </div>
+          </form>
+        </div>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/quiz-editor.js"></script>
+  </body>
+</html>

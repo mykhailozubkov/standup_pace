@@ -68,6 +68,11 @@ test("serves the public account page and protects the workspace", async () => {
   const dashboard = await worker.fetch(request("/dashboard"), env);
   assert.equal(dashboard.status, 302);
 
+  const quizEditor = await worker.fetch(request(
+    "/rooms/688285e9-dbea-4b57-bf5c-a283ccca9716/quizzes/new",
+  ), env);
+  assert.equal(quizEditor.status, 302);
+
   const live = await worker.fetch(request(
     "/api/rooms/688285e9-dbea-4b57-bf5c-a283ccca9716/live",
   ), env);
@@ -89,6 +94,20 @@ test("registers a user and exposes the protected workspace", async () => {
   const dashboard = await worker.fetch(request("/dashboard", { headers: { Cookie: cookie } }), env);
   assert.equal(dashboard.status, 200);
   assert.equal(await dashboard.text(), "asset:/dashboard.html");
+
+  const quizEditor = await worker.fetch(request(
+    "/rooms/688285e9-dbea-4b57-bf5c-a283ccca9716/quizzes/new",
+    { headers: { Cookie: cookie } },
+  ), env);
+  assert.equal(quizEditor.status, 200);
+  assert.equal(await quizEditor.text(), "asset:/quiz-editor.html");
+
+  const rawQuizEditor = await worker.fetch(request(
+    "/quiz-editor.html",
+    { headers: { Cookie: cookie } },
+  ), env);
+  assert.equal(rawQuizEditor.status, 302);
+  assert.equal(rawQuizEditor.headers.get("location"), `${baseURL}/dashboard`);
 
   const session = await worker.fetch(request("/api/auth/get-session", {
     headers: { Cookie: cookie },
