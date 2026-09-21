@@ -73,11 +73,28 @@
             </aside>
           </section>
 
+          <section id="questionView" class="quiz-question-view" hidden>
+            <div class="quiz-question-topline">
+              <div>
+                <p class="section-kicker" data-i18n="currentQuestion">Current question</p>
+                <strong id="questionProgress"></strong>
+              </div>
+              <div id="questionTimer" class="quiz-question-timer" aria-live="polite">
+                <span id="questionTimerValue">0</span>
+              </div>
+            </div>
+            <article class="panel quiz-play-card">
+              <h2 id="questionPrompt"></h2>
+              <div id="answerOptions" class="quiz-answer-options"></div>
+              <p id="answerStatus" class="quiz-answer-status" aria-live="polite"></p>
+            </article>
+          </section>
+
           <section id="startedView" class="panel quiz-started-view" hidden>
             <div class="quiz-started-orbit" aria-hidden="true"><span>1</span></div>
             <p class="section-kicker" data-i18n="gameStarted">Game started</p>
-            <h2 data-i18n="firstQuestionReady">The first question is ready</h2>
-            <p data-i18n="questionStageCopy">All connected players received the same game state. The interactive question screen is the next implementation stage.</p>
+            <h2 data-i18n="watchingGame">The quiz is already in progress</h2>
+            <p data-i18n="spectatorCopy">Only players who joined the lobby before the start can submit answers.</p>
             <a id="startedBackLink" class="secondary-button quiz-room-link" href="/dashboard" data-i18n="backToRoom">Back to room</a>
           </section>
 

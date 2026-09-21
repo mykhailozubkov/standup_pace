@@ -47,6 +47,7 @@ import {
   leaveQuizGame,
   listQuizGames,
   startQuizGame,
+  submitQuizGameAnswer,
 } from "./quiz-games.ts";
 
 export { RoomSync };
@@ -424,6 +425,23 @@ async function handleQuizGameAction(
   return sendJson(200, { game });
 }
 
+async function handleQuizGameAnswer(
+  request: Request,
+  env: Env,
+  roomId: string,
+  gameId: string,
+) {
+  const session = await requireAuthSession(request, env);
+  const game = await submitQuizGameAnswer(
+    env,
+    roomId,
+    gameId,
+    session.user.id,
+    await readJson(request, 2_048),
+  );
+  return sendJson(201, { game });
+}
+
 async function assetResponse(env: Env, request: Request, pathname: string) {
   const assetUrl = new URL(request.url);
   assetUrl.pathname = pathname;
@@ -661,6 +679,14 @@ for (const action of ["join", "leave", "start", "cancel"] as const) {
   ));
   app.all(`/api/rooms/:roomId/quiz-games/:gameId/${action}`, () => methodNotAllowed("POST"));
 }
+
+app.post("/api/rooms/:roomId/quiz-games/:gameId/answer", (context) => handleQuizGameAnswer(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+  context.req.param("gameId"),
+));
+app.all("/api/rooms/:roomId/quiz-games/:gameId/answer", () => methodNotAllowed("POST"));
 
 app.get("/api/rooms/:roomId/live", (context) => handleRoomLive(
   context.req.raw,

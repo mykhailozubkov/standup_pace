@@ -8,6 +8,8 @@ let socketRetryTimer = null;
 let refreshTimer = null;
 let refreshInFlight = false;
 let realtimeStopped = false;
+let serverOffsetMs = 0;
+let answerSubmitting = false;
 
 const routeMatch = location.pathname.match(
   /^\/rooms\/([0-9a-f-]{36})\/quiz-games\/([0-9a-f-]{36})\/?$/i,
@@ -55,9 +57,18 @@ const translations = {
     joinedGuidance: "You are in. Keep this page open while the host prepares the game.",
     hostGuidanceEmpty: "At least one player must join before you can start.",
     hostGuidanceReady: "Players are ready. Start when you want everyone to receive question one.",
+    currentQuestion: "Current question",
+    questionProgress: "Question {current} of {total}",
+    answerLocked: "Answer locked in. Waiting for the host…",
+    chooseAnswer: "Choose one answer before time runs out.",
+    timeExpired: "Time is up. Waiting for the host…",
+    submittingAnswer: "Locking in your answer…",
+    answerAlreadySubmitted: "Your answer is already locked in.",
+    answerTimeExpired: "The answer arrived after the timer ended.",
+    optionUnavailable: "That answer option is no longer available.",
     gameStarted: "Game started",
-    firstQuestionReady: "The first question is ready",
-    questionStageCopy: "All connected players received the same game state. The interactive question screen is the next implementation stage.",
+    watchingGame: "The quiz is already in progress",
+    spectatorCopy: "Only players who joined the lobby before the start can submit answers.",
     gameCancelled: "Game cancelled",
     lobbyClosed: "This lobby is closed",
     cancelledCopy: "Return to the room to launch another quiz.",
@@ -111,9 +122,18 @@ const translations = {
     joinedGuidance: "Вы в игре. Не закрывайте страницу, пока ведущий готовится к запуску.",
     hostGuidanceEmpty: "Для старта должен присоединиться хотя бы один игрок.",
     hostGuidanceReady: "Игроки готовы. Запустите викторину, чтобы все одновременно получили первый вопрос.",
+    currentQuestion: "Текущий вопрос",
+    questionProgress: "Вопрос {current} из {total}",
+    answerLocked: "Ответ принят. Ожидаем ведущего…",
+    chooseAnswer: "Выберите один ответ до окончания времени.",
+    timeExpired: "Время вышло. Ожидаем ведущего…",
+    submittingAnswer: "Фиксируем ответ…",
+    answerAlreadySubmitted: "Ваш ответ уже принят.",
+    answerTimeExpired: "Ответ пришёл после окончания времени.",
+    optionUnavailable: "Этот вариант ответа больше недоступен.",
     gameStarted: "Игра началась",
-    firstQuestionReady: "Первый вопрос готов",
-    questionStageCopy: "Все подключённые игроки получили одинаковое состояние игры. Интерактивный экран вопроса — следующий этап реализации.",
+    watchingGame: "Викторина уже идёт",
+    spectatorCopy: "Отвечать могут только игроки, которые вошли в лобби до старта.",
     gameCancelled: "Игра отменена",
     lobbyClosed: "Это лобби закрыто",
     cancelledCopy: "Вернитесь в комнату, чтобы запустить другую викторину.",
@@ -140,6 +160,7 @@ const gameHeroCopy = document.getElementById("gameHeroCopy");
 const gameStatusDot = document.getElementById("gameStatusDot");
 const gameStatus = document.getElementById("gameStatus");
 const waitingView = document.getElementById("waitingView");
+const questionView = document.getElementById("questionView");
 const startedView = document.getElementById("startedView");
 const cancelledView = document.getElementById("cancelledView");
 const playerCount = document.getElementById("playerCount");
@@ -152,6 +173,12 @@ const joinGameButton = document.getElementById("joinGameButton");
 const leaveGameButton = document.getElementById("leaveGameButton");
 const startGameButton = document.getElementById("startGameButton");
 const cancelGameButton = document.getElementById("cancelGameButton");
+const questionProgress = document.getElementById("questionProgress");
+const questionTimer = document.getElementById("questionTimer");
+const questionTimerValue = document.getElementById("questionTimerValue");
+const questionPrompt = document.getElementById("questionPrompt");
+const answerOptions = document.getElementById("answerOptions");
+const answerStatus = document.getElementById("answerStatus");
 const toast = document.getElementById("toast");
 
 function tr(key) {
@@ -193,6 +220,10 @@ function errorMessage(error) {
     QUIZ_GAME_EMPTY_LOBBY: "emptyLobby",
     QUIZ_GAME_NOT_JOINED: "notJoined",
     QUIZ_GAME_NOT_OPEN: "gameNotOpen",
+    QUIZ_GAME_NOT_ACTIVE: "gameNotOpen",
+    QUIZ_ANSWER_ALREADY_SUBMITTED: "answerAlreadySubmitted",
+    QUIZ_ANSWER_TIME_EXPIRED: "answerTimeExpired",
+    QUIZ_OPTION_NOT_FOUND: "optionUnavailable",
   };
   return tr(errors[error?.code] || "requestFailed");
 }
@@ -276,6 +307,67 @@ function renderPlayers() {
   });
 }
 
+function questionRemainingMs() {
+  if (!game?.currentQuestion || !game.questionStartedAt) return 0;
+  const deadline = game.questionStartedAt + (game.currentQuestion.timeLimitSeconds * 1_000);
+  return Math.max(0, deadline - (Date.now() + serverOffsetMs));
+}
+
+function syncServerClock(serverNow, requestedAt) {
+  if (!Number.isFinite(serverNow)) return;
+  const receivedAt = Date.now();
+  serverOffsetMs = serverNow - Math.round((requestedAt + receivedAt) / 2);
+}
+
+function renderQuestionTimer() {
+  if (!game || questionView.hidden || !game.currentQuestion) return;
+  const totalMs = game.currentQuestion.timeLimitSeconds * 1_000;
+  const remainingMs = questionRemainingMs();
+  const seconds = Math.ceil(remainingMs / 1_000);
+  const progress = totalMs ? (remainingMs / totalMs) * 100 : 0;
+  questionTimerValue.textContent = String(seconds);
+  questionTimer.style.setProperty("--remaining", `${Math.max(0, Math.min(100, progress))}%`);
+  questionTimer.classList.toggle("urgent", remainingMs > 0 && remainingMs <= 5_000);
+  questionTimer.classList.toggle("expired", remainingMs === 0);
+  if (remainingMs === 0 && !game.myAnswer) {
+    answerOptions.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    answerStatus.textContent = tr("timeExpired");
+    answerStatus.className = "quiz-answer-status expired";
+  }
+}
+
+function renderQuestion() {
+  const question = game.currentQuestion;
+  if (!question) return;
+  questionProgress.textContent = tr("questionProgress")
+    .replace("{current}", String(question.position))
+    .replace("{total}", String(game.questionCount));
+  questionPrompt.textContent = question.prompt;
+  answerOptions.replaceChildren();
+  const remainingMs = questionRemainingMs();
+  const locked = Boolean(game.myAnswer);
+  const optionLabels = ["A", "B", "C", "D"];
+
+  question.options.forEach((option, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `quiz-answer-option quiz-answer-option-${index + 1}`;
+    if (game.myAnswer?.selectedOptionId === option.id) button.classList.add("selected");
+    button.disabled = locked || remainingMs === 0 || answerSubmitting;
+    const marker = document.createElement("span");
+    marker.textContent = optionLabels[index] || String(index + 1);
+    const text = document.createElement("strong");
+    text.textContent = option.text;
+    button.append(marker, text);
+    button.addEventListener("click", () => submitAnswer(option.id));
+    answerOptions.append(button);
+  });
+
+  answerStatus.textContent = tr(locked ? "answerLocked" : remainingMs === 0 ? "timeExpired" : "chooseAnswer");
+  answerStatus.className = `quiz-answer-status${locked ? " locked" : remainingMs === 0 ? " expired" : ""}`;
+  renderQuestionTimer();
+}
+
 function renderGame() {
   document.title = `${game.title} — Standup Helper`;
   gameTitle.textContent = game.title;
@@ -288,8 +380,11 @@ function renderGame() {
   [backToRoomLink, startedBackLink, cancelledBackLink].forEach((link) => { link.href = roomUrl; });
 
   waitingView.hidden = game.status !== "waiting";
-  startedView.hidden = !["active", "finished"].includes(game.status);
+  const canAnswer = game.status === "active" && game.isJoined && game.currentQuestion;
+  questionView.hidden = !canAnswer;
+  startedView.hidden = !(game.status === "finished" || (game.status === "active" && !canAnswer));
   cancelledView.hidden = game.status !== "cancelled";
+  if (canAnswer) renderQuestion();
   if (game.status !== "waiting") return;
 
   renderPlayers();
@@ -306,6 +401,7 @@ function renderGame() {
 async function loadGame(showFailure = true) {
   if (!roomId || !gameId || refreshInFlight) return;
   refreshInFlight = true;
+  const requestedAt = Date.now();
   try {
     const [roomPayload, gamePayload] = await Promise.all([
       room ? Promise.resolve({ room }) : api(`/api/rooms/${encodeURIComponent(roomId)}`),
@@ -313,6 +409,7 @@ async function loadGame(showFailure = true) {
     ]);
     room = roomPayload.room;
     game = gamePayload.game;
+    syncServerClock(game.serverNow, requestedAt);
     loading.hidden = true;
     content.hidden = false;
     renderGame();
@@ -381,12 +478,14 @@ async function runAction(action, button, pendingLabel) {
   button.disabled = true;
   const previousLabel = button.textContent;
   button.textContent = tr(pendingLabel);
+  const requestedAt = Date.now();
   try {
     const payload = await api(
       `/api/rooms/${encodeURIComponent(roomId)}/quiz-games/${encodeURIComponent(gameId)}/${action}`,
       { method: "POST" },
     );
     game = payload.game;
+    syncServerClock(game.serverNow, requestedAt);
     renderGame();
   } catch (error) {
     showToast(errorMessage(error), true);
@@ -394,6 +493,34 @@ async function runAction(action, button, pendingLabel) {
   } finally {
     button.disabled = false;
     button.textContent = previousLabel;
+  }
+}
+
+async function submitAnswer(optionId) {
+  if (answerSubmitting || game?.myAnswer || questionRemainingMs() === 0) return;
+  answerSubmitting = true;
+  answerOptions.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+  answerStatus.textContent = tr("submittingAnswer");
+  answerStatus.className = "quiz-answer-status submitting";
+  const requestedAt = Date.now();
+  try {
+    const payload = await api(
+      `/api/rooms/${encodeURIComponent(roomId)}/quiz-games/${encodeURIComponent(gameId)}/answer`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ optionId }),
+      },
+    );
+    game = payload.game;
+    syncServerClock(game.serverNow, requestedAt);
+    renderGame();
+  } catch (error) {
+    showToast(errorMessage(error), true);
+    await loadGame(false);
+  } finally {
+    answerSubmitting = false;
+    if (game) renderGame();
   }
 }
 
@@ -427,6 +554,7 @@ if (!routeMatch) {
   loading.classList.add("error-copy");
 } else {
   loadGame();
+  setInterval(renderQuestionTimer, 200);
   setInterval(() => {
     if (document.visibilityState === "visible" && gameSocket?.readyState !== WebSocket.OPEN) loadGame(false);
   }, 30_000);

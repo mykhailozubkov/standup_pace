@@ -293,6 +293,19 @@ test("runs a quiz lobby through authenticated room APIs", async () => {
   ), env);
   assert.equal(detailResponse.status, 200);
   assert.equal((await detailResponse.json()).game.questionStartedAt, started.questionStartedAt);
+
+  const answerResponse = await worker.fetch(request(
+    `/api/rooms/${room.id}/quiz-games/${game.id}/answer`,
+    {
+      method: "POST",
+      headers: { Cookie: memberCookie, "Content-Type": "application/json" },
+      body: JSON.stringify({ optionId: started.currentQuestion.options[0].id }),
+    },
+  ), env);
+  assert.equal(answerResponse.status, 201);
+  const answered = (await answerResponse.json()).game;
+  assert.equal(answered.myAnswer.selectedOptionId, started.currentQuestion.options[0].id);
+  assert.equal("isCorrect" in answered.myAnswer, false);
 });
 
 test("manages room settings, roles, membership, and archiving through the API", async () => {
@@ -548,4 +561,10 @@ test("keeps explicit method guards and security headers", async () => {
   ), env);
   assert.equal(joinQuizGame.status, 405);
   assert.equal(joinQuizGame.headers.get("allow"), "POST");
+
+  const answerQuizGame = await worker.fetch(request(
+    "/api/rooms/room-id/quiz-games/game-id/answer",
+  ), env);
+  assert.equal(answerQuizGame.status, 405);
+  assert.equal(answerQuizGame.headers.get("allow"), "POST");
 });

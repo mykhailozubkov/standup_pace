@@ -8,6 +8,7 @@ import {
   leaveQuizGame,
   listQuizGames,
   startQuizGame,
+  submitQuizGameAnswer,
 } from "../src/quiz-games.ts";
 import { createQuiz, updateQuiz } from "../src/quizzes.ts";
 import { createRoom, joinRoom, updateMemberRole } from "../src/rooms.ts";
@@ -144,4 +145,88 @@ test("restricts game controls and keeps one open game per room", async () => {
   const listed = await listQuizGames(env, room.id, member.id);
   assert.equal(listed.currentGame.id, replacement.id);
   assert.deepEqual(listed.games.map(({ status }) => status), ["waiting", "cancelled"]);
+});
+
+test("accepts one timed answer from each joined player without revealing correctness", async () => {
+  const { env, room, quiz } = await gameFixture();
+  const game = await createQuizGame(env, room.id, owner.id, { quizId: quiz.id });
+  await joinQuizGame(env, room.id, game.id, member.id);
+  const started = await startQuizGame(env, room.id, game.id, owner.id);
+  const selectedOption = started.currentQuestion.options[0];
+
+  const answered = await submitQuizGameAnswer(
+    env,
+    room.id,
+    game.id,
+    member.id,
+    { optionId: selectedOption.id },
+  );
+  assert.equal(answered.myAnswer.selectedOptionId, selectedOption.id);
+  assert.equal(typeof answered.myAnswer.responseTimeMs, "number");
+  assert.equal(typeof answered.serverNow, "number");
+  assert.equal("isCorrect" in answered.myAnswer, false);
+  assert.equal("pointsAwarded" in answered.myAnswer, false);
+
+  const stored = env.DB.query(`
+    SELECT is_correct, points_awarded
+    FROM quiz_game_answers
+    WHERE game_id = ? AND participant_user_id = ?
+  `, game.id, member.id)[0];
+  assert.equal(stored.is_correct, 1);
+  assert.equal(stored.points_awarded, 0);
+
+  await assert.rejects(
+    () => submitQuizGameAnswer(
+      env,
+      room.id,
+      game.id,
+      member.id,
+      { optionId: started.currentQuestion.options[1].id },
+    ),
+    /QUIZ_ANSWER_ALREADY_SUBMITTED/,
+  );
+});
+
+test("rejects answers from spectators, unknown options, and expired questions", async () => {
+  const { env, room, quiz } = await gameFixture();
+  const game = await createQuizGame(env, room.id, owner.id, { quizId: quiz.id });
+  await joinQuizGame(env, room.id, game.id, member.id);
+  const started = await startQuizGame(env, room.id, game.id, owner.id);
+
+  await assert.rejects(
+    () => submitQuizGameAnswer(
+      env,
+      room.id,
+      game.id,
+      owner.id,
+      { optionId: started.currentQuestion.options[0].id },
+    ),
+    /QUIZ_GAME_NOT_JOINED/,
+  );
+  await assert.rejects(
+    () => submitQuizGameAnswer(
+      env,
+      room.id,
+      game.id,
+      member.id,
+      { optionId: crypto.randomUUID() },
+    ),
+    /QUIZ_OPTION_NOT_FOUND/,
+  );
+
+  await env.DB.prepare(`
+    UPDATE quiz_games
+    SET question_started_at = question_started_at - 30000
+    WHERE id = ?
+  `).bind(game.id).all();
+  await assert.rejects(
+    () => submitQuizGameAnswer(
+      env,
+      room.id,
+      game.id,
+      member.id,
+      { optionId: started.currentQuestion.options[0].id },
+    ),
+    /QUIZ_ANSWER_TIME_EXPIRED/,
+  );
 });
