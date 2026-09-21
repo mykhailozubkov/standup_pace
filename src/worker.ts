@@ -40,7 +40,9 @@ import {
   updateQuiz,
 } from "./quizzes.ts";
 import {
+  advanceQuizGameQuestion,
   cancelQuizGame,
+  closeQuizGameQuestion,
   createQuizGame,
   getQuizGame,
   joinQuizGame,
@@ -442,6 +444,22 @@ async function handleQuizGameAnswer(
   return sendJson(201, { game });
 }
 
+async function handleQuizQuestionAction(
+  request: Request,
+  env: Env,
+  roomId: string,
+  gameId: string,
+  action: "close-question" | "next-question",
+) {
+  const session = await requireAuthSession(request, env);
+  const handler = action === "close-question"
+    ? closeQuizGameQuestion
+    : advanceQuizGameQuestion;
+  const game = await handler(env, roomId, gameId, session.user.id);
+  await publishRoomEvent(env, roomId, "quiz-game.updated");
+  return sendJson(200, { game });
+}
+
 async function assetResponse(env: Env, request: Request, pathname: string) {
   const assetUrl = new URL(request.url);
   assetUrl.pathname = pathname;
@@ -687,6 +705,17 @@ app.post("/api/rooms/:roomId/quiz-games/:gameId/answer", (context) => handleQuiz
   context.req.param("gameId"),
 ));
 app.all("/api/rooms/:roomId/quiz-games/:gameId/answer", () => methodNotAllowed("POST"));
+
+for (const action of ["close-question", "next-question"] as const) {
+  app.post(`/api/rooms/:roomId/quiz-games/:gameId/${action}`, (context) => handleQuizQuestionAction(
+    context.req.raw,
+    context.env,
+    context.req.param("roomId"),
+    context.req.param("gameId"),
+    action,
+  ));
+  app.all(`/api/rooms/:roomId/quiz-games/:gameId/${action}`, () => methodNotAllowed("POST"));
+}
 
 app.get("/api/rooms/:roomId/live", (context) => handleRoomLive(
   context.req.raw,

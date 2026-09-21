@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  advanceQuizGameQuestion,
   cancelQuizGame,
+  closeQuizGameQuestion,
   createQuizGame,
   getQuizGame,
   joinQuizGame,
@@ -229,4 +231,78 @@ test("rejects answers from spectators, unknown options, and expired questions", 
     ),
     /QUIZ_ANSWER_TIME_EXPIRED/,
   );
+});
+
+test("reveals the correct answer, awards speed points, and advances the game", async () => {
+  const { env, room, quiz } = await gameFixture();
+  const game = await createQuizGame(env, room.id, owner.id, { quizId: quiz.id });
+  await joinQuizGame(env, room.id, game.id, member.id);
+  await joinQuizGame(env, room.id, game.id, admin.id);
+  const started = await startQuizGame(env, room.id, game.id, owner.id);
+
+  await submitQuizGameAnswer(env, room.id, game.id, member.id, {
+    optionId: started.currentQuestion.options[0].id,
+  });
+  await submitQuizGameAnswer(env, room.id, game.id, admin.id, {
+    optionId: started.currentQuestion.options[1].id,
+  });
+  await assert.rejects(
+    () => closeQuizGameQuestion(env, room.id, game.id, member.id),
+    /ROOM_FORBIDDEN/,
+  );
+
+  const revealed = await closeQuizGameQuestion(env, room.id, game.id, owner.id);
+  assert.equal(revealed.questionPhase, "reveal");
+  assert.equal(revealed.currentQuestion.options[0].isCorrect, true);
+  assert.equal(revealed.currentQuestion.options[0].answerCount, 1);
+  assert.equal(revealed.currentQuestion.options[1].answerCount, 1);
+  const memberResult = await getQuizGame(env, room.id, game.id, member.id);
+  assert.equal(memberResult.myAnswer.isCorrect, true);
+  assert.ok(memberResult.myAnswer.pointsAwarded >= 500);
+  assert.ok(memberResult.myAnswer.pointsAwarded <= 1000);
+  assert.equal(
+    memberResult.participants.find(({ id }) => id === member.id).score,
+    memberResult.myAnswer.pointsAwarded,
+  );
+  await assert.rejects(
+    () => submitQuizGameAnswer(env, room.id, game.id, member.id, {
+      optionId: started.currentQuestion.options[0].id,
+    }),
+    /QUIZ_QUESTION_CLOSED/,
+  );
+
+  const next = await advanceQuizGameQuestion(env, room.id, game.id, admin.id);
+  assert.equal(next.status, "active");
+  assert.equal(next.questionPhase, "question");
+  assert.equal(next.currentQuestion.position, 2);
+  assert.equal("isCorrect" in next.currentQuestion.options[0], false);
+});
+
+test("lets the timer reveal a question and finishes after the last reveal", async () => {
+  const { env, room, quiz } = await gameFixture();
+  const game = await createQuizGame(env, room.id, owner.id, { quizId: quiz.id });
+  await joinQuizGame(env, room.id, game.id, member.id);
+  await startQuizGame(env, room.id, game.id, owner.id);
+
+  await env.DB.prepare(`
+    UPDATE quiz_games
+    SET question_started_at = question_started_at - 30000
+    WHERE id = ?
+  `).bind(game.id).all();
+  const firstReveal = await closeQuizGameQuestion(env, room.id, game.id, member.id);
+  assert.equal(firstReveal.questionPhase, "reveal");
+  await advanceQuizGameQuestion(env, room.id, game.id, owner.id);
+
+  const second = await getQuizGame(env, room.id, game.id, member.id);
+  await submitQuizGameAnswer(env, room.id, game.id, member.id, {
+    optionId: second.currentQuestion.options[1].id,
+  });
+  await closeQuizGameQuestion(env, room.id, game.id, owner.id);
+  const finished = await advanceQuizGameQuestion(env, room.id, game.id, owner.id);
+  assert.equal(finished.status, "finished");
+  assert.equal(finished.questionPhase, "complete");
+  assert.equal(finished.participants[0].finalRank, 1);
+  assert.ok(finished.participants[0].score >= 500);
+  const listed = await listQuizGames(env, room.id, member.id);
+  assert.equal(listed.currentGame, null);
 });

@@ -3,6 +3,7 @@ import type { Env } from "./env.ts";
 
 type RoomRole = "owner" | "admin" | "member";
 type GameStatus = "waiting" | "active" | "finished" | "cancelled";
+type QuestionPhase = "lobby" | "question" | "reveal" | "complete";
 
 interface RoomAccessRow {
   role: RoomRole;
@@ -37,7 +38,9 @@ interface GameRow {
   host_user_id: string;
   host_name: string;
   current_question_position: number;
+  question_phase: QuestionPhase;
   question_started_at: number | null;
+  question_closed_at: number | null;
   started_at: number | null;
   finished_at: number | null;
   cancelled_at: number | null;
@@ -67,11 +70,15 @@ interface GameOptionRow {
   id: string;
   position: number;
   text: string;
+  is_correct: number;
+  answer_count: number;
 }
 
 interface AnswerRow {
   selected_option_id: string;
+  is_correct: number;
   response_time_ms: number;
+  points_awarded: number;
   answered_at: number;
 }
 
@@ -193,7 +200,9 @@ function gameSummary(game: GameRow, role: RoomRole) {
     questionCount: Number(game.question_count),
     participantCount: Number(game.participant_count),
     currentQuestionPosition: Number(game.current_question_position),
+    questionPhase: game.question_phase,
     questionStartedAt: game.question_started_at === null ? null : Number(game.question_started_at),
+    questionClosedAt: game.question_closed_at === null ? null : Number(game.question_closed_at),
     startedAt: game.started_at === null ? null : Number(game.started_at),
     finishedAt: game.finished_at === null ? null : Number(game.finished_at),
     cancelledAt: game.cancelled_at === null ? null : Number(game.cancelled_at),
@@ -238,11 +247,21 @@ async function gameDetail(
     const question = questionResult.results[0];
     if (question) {
       const options = await env.DB.prepare(`
-        SELECT id, position, text
+        SELECT
+          quiz_game_options.id,
+          quiz_game_options.position,
+          quiz_game_options.text,
+          quiz_game_options.is_correct,
+          COUNT(quiz_game_answers.id) AS answer_count
         FROM quiz_game_options
-        WHERE game_question_id = ?
-        ORDER BY position
+        LEFT JOIN quiz_game_answers
+          ON quiz_game_answers.selected_option_id = quiz_game_options.id
+          AND quiz_game_answers.game_question_id = quiz_game_options.game_question_id
+        WHERE quiz_game_options.game_question_id = ?
+        GROUP BY quiz_game_options.id
+        ORDER BY quiz_game_options.position
       `).bind(question.id).all<GameOptionRow>();
+      const revealAnswers = game.question_phase === "reveal" || game.status === "finished";
       currentQuestion = {
         id: question.id,
         position: Number(question.position),
@@ -252,11 +271,15 @@ async function gameDetail(
           id: option.id,
           position: Number(option.position),
           text: option.text,
+          ...(revealAnswers ? {
+            isCorrect: option.is_correct === 1,
+            answerCount: Number(option.answer_count),
+          } : {}),
         })),
       };
 
       const answerResult = await env.DB.prepare(`
-        SELECT selected_option_id, response_time_ms, answered_at
+        SELECT selected_option_id, is_correct, response_time_ms, points_awarded, answered_at
         FROM quiz_game_answers
         WHERE game_id = ? AND game_question_id = ? AND participant_user_id = ?
         LIMIT 1
@@ -267,6 +290,10 @@ async function gameDetail(
           selectedOptionId: answer.selected_option_id,
           responseTimeMs: Number(answer.response_time_ms),
           answeredAt: Number(answer.answered_at),
+          ...(revealAnswers ? {
+            isCorrect: answer.is_correct === 1,
+            pointsAwarded: Number(answer.points_awarded),
+          } : {}),
         };
       }
     }
@@ -433,7 +460,9 @@ export async function startQuizGame(env: Env, roomId: string, gameId: string, us
     SET
       status = 'active',
       current_question_position = 1,
+      question_phase = 'question',
       question_started_at = CAST(unixepoch('subsec') * 1000 AS INTEGER),
+      question_closed_at = NULL,
       started_at = unixepoch(),
       updated_at = unixepoch()
     WHERE id = ? AND room_id = ? AND status = 'waiting'
@@ -461,6 +490,7 @@ export async function submitQuizGameAnswer(
   const access = await roomAccess(env, roomId, userId);
   const game = await gameRow(env, roomId, gameId, userId);
   if (game.status !== "active") throw new AppError("QUIZ_GAME_NOT_ACTIVE", 409);
+  if (game.question_phase !== "question") throw new AppError("QUIZ_QUESTION_CLOSED", 409);
   if (!game.current_user_joined) throw new AppError("QUIZ_GAME_NOT_JOINED", 403);
   if (typeof body.optionId !== "string") throw new AppError("QUIZ_OPTION_NOT_FOUND", 404);
   validateId(body.optionId, "QUIZ_OPTION_NOT_FOUND");
@@ -522,6 +552,126 @@ export async function submitQuizGameAnswer(
   return gameDetail(env, roomId, gameId, userId, access.role);
 }
 
+export async function closeQuizGameQuestion(
+  env: Env,
+  roomId: string,
+  gameId: string,
+  userId: string,
+) {
+  const access = await roomAccess(env, roomId, userId);
+  const game = await gameRow(env, roomId, gameId, userId);
+  if (game.status !== "active") throw new AppError("QUIZ_GAME_NOT_ACTIVE", 409);
+  if (game.question_phase === "reveal") {
+    return gameDetail(env, roomId, gameId, userId, access.role);
+  }
+  if (game.question_phase !== "question" || game.question_started_at === null) {
+    throw new AppError("QUIZ_QUESTION_NOT_OPEN", 409);
+  }
+
+  const questionResult = await env.DB.prepare(`
+    SELECT id, position, prompt, time_limit_seconds
+    FROM quiz_game_questions
+    WHERE game_id = ? AND position = ?
+    LIMIT 1
+  `).bind(gameId, game.current_question_position).all<GameQuestionRow>();
+  const question = questionResult.results[0];
+  if (!question) throw new AppError("QUIZ_GAME_STATE_INVALID", 409);
+
+  const now = Date.now();
+  const deadline = Number(game.question_started_at) + (Number(question.time_limit_seconds) * 1_000);
+  const canManage = access.role === "owner" || access.role === "admin";
+  if (!canManage && now < deadline) throw new AppError("ROOM_FORBIDDEN", 403);
+  const limitMs = Number(question.time_limit_seconds) * 1_000;
+
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE quiz_games
+      SET question_phase = 'reveal', question_closed_at = ?, updated_at = unixepoch()
+      WHERE id = ? AND room_id = ? AND status = 'active' AND question_phase = 'question'
+    `).bind(now, gameId, roomId),
+    env.DB.prepare(`
+      UPDATE quiz_game_answers
+      SET points_awarded = CASE
+        WHEN is_correct = 1 THEN CAST(
+          500 + ((? - MIN(response_time_ms, ?)) * 500.0 / ?)
+          AS INTEGER
+        )
+        ELSE 0
+      END
+      WHERE game_id = ? AND game_question_id = ?
+    `).bind(limitMs, limitMs, limitMs, gameId, question.id),
+    env.DB.prepare(`
+      UPDATE quiz_game_participants
+      SET score = COALESCE((
+        SELECT SUM(points_awarded)
+        FROM quiz_game_answers
+        WHERE quiz_game_answers.game_id = quiz_game_participants.game_id
+          AND quiz_game_answers.participant_user_id = quiz_game_participants.user_id
+      ), 0)
+      WHERE game_id = ? AND left_at IS NULL
+    `).bind(gameId),
+  ]);
+
+  return gameDetail(env, roomId, gameId, userId, access.role);
+}
+
+export async function advanceQuizGameQuestion(
+  env: Env,
+  roomId: string,
+  gameId: string,
+  userId: string,
+) {
+  const access = await roomAccess(env, roomId, userId);
+  requireManager(access);
+  const game = await gameRow(env, roomId, gameId, userId);
+  if (game.status !== "active") throw new AppError("QUIZ_GAME_NOT_ACTIVE", 409);
+  if (game.question_phase !== "reveal") throw new AppError("QUIZ_QUESTION_NOT_REVEALED", 409);
+
+  if (Number(game.current_question_position) < Number(game.question_count)) {
+    const result = await env.DB.prepare(`
+      UPDATE quiz_games
+      SET
+        current_question_position = current_question_position + 1,
+        question_phase = 'question',
+        question_started_at = CAST(unixepoch('subsec') * 1000 AS INTEGER),
+        question_closed_at = NULL,
+        updated_at = unixepoch()
+      WHERE id = ? AND room_id = ? AND status = 'active' AND question_phase = 'reveal'
+    `).bind(gameId, roomId).all();
+    if (!result.meta.changes) throw new AppError("QUIZ_QUESTION_NOT_REVEALED", 409);
+  } else {
+    await env.DB.batch([
+      env.DB.prepare(`
+        WITH ranked AS (
+          SELECT
+            user_id,
+            RANK() OVER (ORDER BY score DESC, joined_at, user_id) AS final_rank
+          FROM quiz_game_participants
+          WHERE game_id = ? AND left_at IS NULL
+        )
+        UPDATE quiz_game_participants
+        SET final_rank = (
+          SELECT ranked.final_rank
+          FROM ranked
+          WHERE ranked.user_id = quiz_game_participants.user_id
+        )
+        WHERE game_id = ? AND left_at IS NULL
+      `).bind(gameId, gameId),
+      env.DB.prepare(`
+        UPDATE quiz_games
+        SET
+          status = 'finished',
+          question_phase = 'complete',
+          finished_at = unixepoch(),
+          updated_at = unixepoch()
+        WHERE id = ? AND room_id = ? AND status = 'active' AND question_phase = 'reveal'
+      `).bind(gameId, roomId),
+    ]);
+  }
+
+  return gameDetail(env, roomId, gameId, userId, access.role);
+}
+
 export async function cancelQuizGame(env: Env, roomId: string, gameId: string, userId: string) {
   const access = await roomAccess(env, roomId, userId);
   requireManager(access);
@@ -529,7 +679,15 @@ export async function cancelQuizGame(env: Env, roomId: string, gameId: string, u
 
   const result = await env.DB.prepare(`
     UPDATE quiz_games
-    SET status = 'cancelled', cancelled_at = unixepoch(), updated_at = unixepoch()
+    SET
+      status = 'cancelled',
+      question_phase = 'complete',
+      question_closed_at = CASE
+        WHEN status = 'active' THEN CAST(unixepoch('subsec') * 1000 AS INTEGER)
+        ELSE question_closed_at
+      END,
+      cancelled_at = unixepoch(),
+      updated_at = unixepoch()
     WHERE id = ? AND room_id = ? AND status IN ('waiting', 'active')
   `).bind(gameId, roomId).all();
   if (!result.meta.changes) throw new AppError("QUIZ_GAME_NOT_OPEN", 409);

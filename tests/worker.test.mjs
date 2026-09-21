@@ -306,6 +306,22 @@ test("runs a quiz lobby through authenticated room APIs", async () => {
   const answered = (await answerResponse.json()).game;
   assert.equal(answered.myAnswer.selectedOptionId, started.currentQuestion.options[0].id);
   assert.equal("isCorrect" in answered.myAnswer, false);
+
+  const closeResponse = await worker.fetch(request(
+    `/api/rooms/${room.id}/quiz-games/${game.id}/close-question`,
+    { method: "POST", headers: { Cookie: ownerCookie } },
+  ), env);
+  assert.equal(closeResponse.status, 200);
+  const revealed = (await closeResponse.json()).game;
+  assert.equal(revealed.questionPhase, "reveal");
+  assert.equal(revealed.currentQuestion.options[0].isCorrect, true);
+
+  const finishResponse = await worker.fetch(request(
+    `/api/rooms/${room.id}/quiz-games/${game.id}/next-question`,
+    { method: "POST", headers: { Cookie: ownerCookie } },
+  ), env);
+  assert.equal(finishResponse.status, 200);
+  assert.equal((await finishResponse.json()).game.status, "finished");
 });
 
 test("manages room settings, roles, membership, and archiving through the API", async () => {
@@ -567,4 +583,12 @@ test("keeps explicit method guards and security headers", async () => {
   ), env);
   assert.equal(answerQuizGame.status, 405);
   assert.equal(answerQuizGame.headers.get("allow"), "POST");
+
+  for (const action of ["close-question", "next-question"]) {
+    const response = await worker.fetch(request(
+      `/api/rooms/room-id/quiz-games/game-id/${action}`,
+    ), env);
+    assert.equal(response.status, 405);
+    assert.equal(response.headers.get("allow"), "POST");
+  }
 });

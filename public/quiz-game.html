@@ -76,7 +76,7 @@
           <section id="questionView" class="quiz-question-view" hidden>
             <div class="quiz-question-topline">
               <div>
-                <p class="section-kicker" data-i18n="currentQuestion">Current question</p>
+                <p id="currentQuestionKicker" class="section-kicker" data-i18n="currentQuestion">Current question</p>
                 <strong id="questionProgress"></strong>
               </div>
               <div id="questionTimer" class="quiz-question-timer" aria-live="polite">
@@ -87,14 +87,18 @@
               <h2 id="questionPrompt"></h2>
               <div id="answerOptions" class="quiz-answer-options"></div>
               <p id="answerStatus" class="quiz-answer-status" aria-live="polite"></p>
+              <div id="questionHostActions" class="quiz-question-host-actions" hidden>
+                <button id="closeQuestionButton" class="secondary-button" type="button" data-i18n="closeQuestion">End question</button>
+                <button id="nextQuestionButton" class="primary-button" type="button" hidden data-i18n="nextQuestion">Next question</button>
+              </div>
             </article>
           </section>
 
           <section id="startedView" class="panel quiz-started-view" hidden>
             <div class="quiz-started-orbit" aria-hidden="true"><span>1</span></div>
-            <p class="section-kicker" data-i18n="gameStarted">Game started</p>
-            <h2 data-i18n="watchingGame">The quiz is already in progress</h2>
-            <p data-i18n="spectatorCopy">Only players who joined the lobby before the start can submit answers.</p>
+            <p id="startedKicker" class="section-kicker" data-i18n="gameStarted">Game started</p>
+            <h2 id="startedHeading" data-i18n="watchingGame">The quiz is already in progress</h2>
+            <p id="startedCopy" data-i18n="spectatorCopy">Only players who joined the lobby before the start can submit answers.</p>
             <a id="startedBackLink" class="secondary-button quiz-room-link" href="/dashboard" data-i18n="backToRoom">Back to room</a>
           </section>
 

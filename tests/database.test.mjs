@@ -11,6 +11,7 @@ const speechMigrationUrl = new URL("../migrations/0005_create_speeches.sql", imp
 const assignmentMigrationUrl = new URL("../migrations/0006_create_assignments.sql", import.meta.url);
 const quizMigrationUrl = new URL("../migrations/0007_create_quizzes.sql", import.meta.url);
 const quizGameMigrationUrl = new URL("../migrations/0008_create_quiz_games.sql", import.meta.url);
+const quizQuestionPhaseMigrationUrl = new URL("../migrations/0009_add_quiz_question_phases.sql", import.meta.url);
 
 test("the initial D1 migration creates the room data model", async () => {
   const database = new DatabaseSync(":memory:");
@@ -296,6 +297,7 @@ test("the quiz game migration snapshots live games, participants and answers", a
   database.exec(await readFile(migrationUrl, "utf8"));
   database.exec(await readFile(quizMigrationUrl, "utf8"));
   database.exec(await readFile(quizGameMigrationUrl, "utf8"));
+  database.exec(await readFile(quizQuestionPhaseMigrationUrl, "utf8"));
 
   database.prepare("INSERT INTO user_profiles (user_id, display_name) VALUES (?, ?)")
     .run("user-1", "Ada");
@@ -344,7 +346,7 @@ test("the quiz game migration snapshots live games, participants and answers", a
   database.prepare(`
     UPDATE quiz_games
     SET status = 'active', current_question_position = 1,
-      question_started_at = unixepoch(), started_at = unixepoch()
+      question_phase = 'question', question_started_at = unixepoch(), started_at = unixepoch()
     WHERE id = ?
   `).run("game-1");
   database.prepare(`
@@ -363,5 +365,10 @@ test("the quiz game migration snapshots live games, participants and answers", a
     database.prepare("SELECT points_awarded FROM quiz_game_answers WHERE id = ?")
       .get("answer-1").points_awarded,
     950,
+  );
+  assert.equal(
+    database.prepare("SELECT question_phase FROM quiz_games WHERE id = ?")
+      .get("game-1").question_phase,
+    "question",
   );
 });
