@@ -210,6 +210,72 @@ test("manages quiz drafts through authenticated room APIs", async () => {
   assert.equal((await archiveResponse.json()).archived, true);
 });
 
+test("runs a quiz lobby through authenticated room APIs", async () => {
+  const env = await testEnv();
+  const ownerCookie = await signUp(env);
+  const memberCookie = await signUp(env, {
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    password: "analytical engine 1843",
+  });
+  const roomResponse = await worker.fetch(request("/api/rooms", {
+    method: "POST",
+    headers: { Cookie: ownerCookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Quiz lobby" }),
+  }), env);
+  const room = (await roomResponse.json()).room;
+  await worker.fetch(request("/api/rooms/join", {
+    method: "POST",
+    headers: { Cookie: memberCookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ joinCode: room.joinCode }),
+  }), env);
+  const quizResponse = await worker.fetch(request(`/api/rooms/${room.id}/quizzes`, {
+    method: "POST",
+    headers: { Cookie: ownerCookie, "Content-Type": "application/json" },
+    body: JSON.stringify(quizPayload()),
+  }), env);
+  const quiz = (await quizResponse.json()).quiz;
+
+  const createResponse = await worker.fetch(request(`/api/rooms/${room.id}/quiz-games`, {
+    method: "POST",
+    headers: { Cookie: ownerCookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ quizId: quiz.id }),
+  }), env);
+  assert.equal(createResponse.status, 201);
+  const game = (await createResponse.json()).game;
+  assert.equal(game.status, "waiting");
+
+  const joinResponse = await worker.fetch(request(
+    `/api/rooms/${room.id}/quiz-games/${game.id}/join`,
+    { method: "POST", headers: { Cookie: memberCookie } },
+  ), env);
+  assert.equal(joinResponse.status, 200);
+  assert.equal((await joinResponse.json()).game.participantCount, 1);
+
+  const listResponse = await worker.fetch(request(`/api/rooms/${room.id}/quiz-games`, {
+    headers: { Cookie: memberCookie },
+  }), env);
+  assert.equal(listResponse.status, 200);
+  assert.equal((await listResponse.json()).currentGame.isJoined, true);
+
+  const startResponse = await worker.fetch(request(
+    `/api/rooms/${room.id}/quiz-games/${game.id}/start`,
+    { method: "POST", headers: { Cookie: ownerCookie } },
+  ), env);
+  assert.equal(startResponse.status, 200);
+  const started = (await startResponse.json()).game;
+  assert.equal(started.status, "active");
+  assert.equal(started.currentQuestion.options.length, 2);
+  assert.equal("isCorrect" in started.currentQuestion.options[0], false);
+
+  const detailResponse = await worker.fetch(request(
+    `/api/rooms/${room.id}/quiz-games/${game.id}`,
+    { headers: { Cookie: memberCookie } },
+  ), env);
+  assert.equal(detailResponse.status, 200);
+  assert.equal((await detailResponse.json()).game.questionStartedAt, started.questionStartedAt);
+});
+
 test("manages room settings, roles, membership, and archiving through the API", async () => {
   const env = await testEnv();
   const ownerCookie = await signUp(env);
@@ -443,4 +509,24 @@ test("keeps explicit method guards and security headers", async () => {
   ), env);
   assert.equal(quiz.status, 405);
   assert.equal(quiz.headers.get("allow"), "GET, PATCH, DELETE");
+
+  const quizGames = await worker.fetch(request(
+    "/api/rooms/room-id/quiz-games",
+    { method: "PUT" },
+  ), env);
+  assert.equal(quizGames.status, 405);
+  assert.equal(quizGames.headers.get("allow"), "GET, POST");
+
+  const quizGame = await worker.fetch(request(
+    "/api/rooms/room-id/quiz-games/game-id",
+    { method: "PUT" },
+  ), env);
+  assert.equal(quizGame.status, 405);
+  assert.equal(quizGame.headers.get("allow"), "GET");
+
+  const joinQuizGame = await worker.fetch(request(
+    "/api/rooms/room-id/quiz-games/game-id/join",
+  ), env);
+  assert.equal(joinQuizGame.status, 405);
+  assert.equal(joinQuizGame.headers.get("allow"), "POST");
 });

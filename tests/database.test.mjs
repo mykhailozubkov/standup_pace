@@ -10,6 +10,7 @@ const meetingMigrationUrl = new URL("../migrations/0004_create_meetings.sql", im
 const speechMigrationUrl = new URL("../migrations/0005_create_speeches.sql", import.meta.url);
 const assignmentMigrationUrl = new URL("../migrations/0006_create_assignments.sql", import.meta.url);
 const quizMigrationUrl = new URL("../migrations/0007_create_quizzes.sql", import.meta.url);
+const quizGameMigrationUrl = new URL("../migrations/0008_create_quiz_games.sql", import.meta.url);
 
 test("the initial D1 migration creates the room data model", async () => {
   const database = new DatabaseSync(":memory:");
@@ -288,4 +289,79 @@ test("the quiz migration models reusable validated question templates", async ()
     ORDER BY name
   `).all().map(({ name }) => name);
   assert.deepEqual(tables, ["quiz_options", "quiz_questions", "quizzes"]);
+});
+
+test("the quiz game migration snapshots live games, participants and answers", async () => {
+  const database = new DatabaseSync(":memory:");
+  database.exec(await readFile(migrationUrl, "utf8"));
+  database.exec(await readFile(quizMigrationUrl, "utf8"));
+  database.exec(await readFile(quizGameMigrationUrl, "utf8"));
+
+  database.prepare("INSERT INTO user_profiles (user_id, display_name) VALUES (?, ?)")
+    .run("user-1", "Ada");
+  database.prepare(`
+    INSERT INTO rooms (id, owner_user_id, name, join_code)
+    VALUES (?, ?, ?, ?)
+  `).run("room-1", "user-1", "Platform", "ROOM42");
+  database.prepare(`
+    INSERT INTO quizzes (id, room_id, title, created_by_user_id, updated_by_user_id)
+    VALUES (?, ?, ?, ?, ?)
+  `).run("quiz-1", "room-1", "Engineering", "user-1", "user-1");
+  database.prepare(`
+    INSERT INTO quiz_questions (id, quiz_id, position, prompt, time_limit_seconds)
+    VALUES (?, ?, 1, ?, 20)
+  `).run("question-1", "quiz-1", "What is D1?");
+  database.prepare(`
+    INSERT INTO quiz_options (id, question_id, position, text, is_correct)
+    VALUES (?, ?, 1, ?, 1), (?, ?, 2, ?, 0)
+  `).run("option-1", "question-1", "Database", "option-2", "question-1", "Queue");
+
+  database.prepare(`
+    INSERT INTO quiz_games (id, room_id, quiz_id, title, host_user_id)
+    VALUES (?, ?, ?, ?, ?)
+  `).run("game-1", "room-1", "quiz-1", "Engineering", "user-1");
+  assert.throws(() => database.prepare(`
+    INSERT INTO quiz_games (id, room_id, quiz_id, title, host_user_id)
+    VALUES (?, ?, ?, ?, ?)
+  `).run("game-2", "room-1", "quiz-1", "Duplicate", "user-1"), /UNIQUE/);
+
+  database.prepare(`
+    INSERT INTO quiz_game_questions (
+      id, game_id, source_question_id, position, prompt, time_limit_seconds
+    ) VALUES (?, ?, ?, 1, ?, 20)
+  `).run("game-question-1", "game-1", "question-1", "What is D1?");
+  database.prepare(`
+    INSERT INTO quiz_game_options (
+      id, game_question_id, source_option_id, position, text, is_correct
+    ) VALUES (?, ?, ?, 1, ?, 1), (?, ?, ?, 2, ?, 0)
+  `).run(
+    "game-option-1", "game-question-1", "option-1", "Database",
+    "game-option-2", "game-question-1", "option-2", "Queue",
+  );
+  database.prepare(`
+    INSERT INTO quiz_game_participants (game_id, user_id) VALUES (?, ?)
+  `).run("game-1", "user-1");
+  database.prepare(`
+    UPDATE quiz_games
+    SET status = 'active', current_question_position = 1,
+      question_started_at = unixepoch(), started_at = unixepoch()
+    WHERE id = ?
+  `).run("game-1");
+  database.prepare(`
+    INSERT INTO quiz_game_answers (
+      id, game_id, game_question_id, participant_user_id,
+      selected_option_id, is_correct, response_time_ms, points_awarded
+    ) VALUES (?, ?, ?, ?, ?, 1, 1500, 950)
+  `).run("answer-1", "game-1", "game-question-1", "user-1", "game-option-1");
+
+  database.prepare("DELETE FROM quiz_questions WHERE id = ?").run("question-1");
+  const snapshot = database.prepare(`
+    SELECT prompt, source_question_id FROM quiz_game_questions WHERE id = ?
+  `).get("game-question-1");
+  assert.deepEqual({ ...snapshot }, { prompt: "What is D1?", source_question_id: null });
+  assert.equal(
+    database.prepare("SELECT points_awarded FROM quiz_game_answers WHERE id = ?")
+      .get("answer-1").points_awarded,
+    950,
+  );
 });

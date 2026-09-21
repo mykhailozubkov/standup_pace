@@ -61,6 +61,7 @@ export async function createTestD1() {
     "0005_create_speeches.sql",
     "0006_create_assignments.sql",
     "0007_create_quizzes.sql",
+    "0008_create_quiz_games.sql",
   ]) {
     const migrationUrl = new URL(`../../migrations/${filename}`, import.meta.url);
     database.exec(await readFile(migrationUrl, "utf8"));

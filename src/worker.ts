@@ -39,6 +39,15 @@ import {
   listQuizzes,
   updateQuiz,
 } from "./quizzes.ts";
+import {
+  cancelQuizGame,
+  createQuizGame,
+  getQuizGame,
+  joinQuizGame,
+  leaveQuizGame,
+  listQuizGames,
+  startQuizGame,
+} from "./quiz-games.ts";
 
 export { RoomSync };
 
@@ -373,6 +382,48 @@ async function handleArchiveQuiz(request: Request, env: Env, roomId: string, qui
   return sendJson(200, result);
 }
 
+async function handleListQuizGames(request: Request, env: Env, roomId: string) {
+  const session = await requireAuthSession(request, env);
+  return sendJson(200, await listQuizGames(env, roomId, session.user.id));
+}
+
+async function handleCreateQuizGame(request: Request, env: Env, roomId: string) {
+  const session = await requireAuthSession(request, env);
+  const game = await createQuizGame(
+    env,
+    roomId,
+    session.user.id,
+    await readJson(request, 2_048),
+  );
+  await publishRoomEvent(env, roomId, "quiz-game.updated");
+  return sendJson(201, { game });
+}
+
+async function handleGetQuizGame(request: Request, env: Env, roomId: string, gameId: string) {
+  const session = await requireAuthSession(request, env);
+  return sendJson(200, { game: await getQuizGame(env, roomId, gameId, session.user.id) });
+}
+
+async function handleQuizGameAction(
+  request: Request,
+  env: Env,
+  roomId: string,
+  gameId: string,
+  action: "join" | "leave" | "start" | "cancel",
+) {
+  const session = await requireAuthSession(request, env);
+  const handler = action === "join"
+    ? joinQuizGame
+    : action === "leave"
+      ? leaveQuizGame
+      : action === "start"
+        ? startQuizGame
+        : cancelQuizGame;
+  const game = await handler(env, roomId, gameId, session.user.id);
+  await publishRoomEvent(env, roomId, "quiz-game.updated");
+  return sendJson(200, { game });
+}
+
 async function assetResponse(env: Env, request: Request, pathname: string) {
   const assetUrl = new URL(request.url);
   assetUrl.pathname = pathname;
@@ -568,6 +619,37 @@ app.delete("/api/rooms/:roomId/quizzes/:quizId", (context) => handleArchiveQuiz(
   context.req.param("quizId"),
 ));
 app.all("/api/rooms/:roomId/quizzes/:quizId", () => methodNotAllowed("GET, PATCH, DELETE"));
+
+app.get("/api/rooms/:roomId/quiz-games", (context) => handleListQuizGames(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+));
+app.post("/api/rooms/:roomId/quiz-games", (context) => handleCreateQuizGame(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+));
+app.all("/api/rooms/:roomId/quiz-games", () => methodNotAllowed("GET, POST"));
+
+app.get("/api/rooms/:roomId/quiz-games/:gameId", (context) => handleGetQuizGame(
+  context.req.raw,
+  context.env,
+  context.req.param("roomId"),
+  context.req.param("gameId"),
+));
+app.all("/api/rooms/:roomId/quiz-games/:gameId", () => methodNotAllowed("GET"));
+
+for (const action of ["join", "leave", "start", "cancel"] as const) {
+  app.post(`/api/rooms/:roomId/quiz-games/:gameId/${action}`, (context) => handleQuizGameAction(
+    context.req.raw,
+    context.env,
+    context.req.param("roomId"),
+    context.req.param("gameId"),
+    action,
+  ));
+  app.all(`/api/rooms/:roomId/quiz-games/:gameId/${action}`, () => methodNotAllowed("POST"));
+}
 
 app.get("/api/rooms/:roomId/live", (context) => handleRoomLive(
   context.req.raw,
