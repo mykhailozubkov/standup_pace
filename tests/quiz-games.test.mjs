@@ -282,6 +282,7 @@ test("lets the timer reveal a question and finishes after the last reveal", asyn
   const { env, room, quiz } = await gameFixture();
   const game = await createQuizGame(env, room.id, owner.id, { quizId: quiz.id });
   await joinQuizGame(env, room.id, game.id, member.id);
+  await joinQuizGame(env, room.id, game.id, admin.id);
   await startQuizGame(env, room.id, game.id, owner.id);
 
   await env.DB.prepare(`
@@ -301,8 +302,17 @@ test("lets the timer reveal a question and finishes after the last reveal", asyn
   const finished = await advanceQuizGameQuestion(env, room.id, game.id, owner.id);
   assert.equal(finished.status, "finished");
   assert.equal(finished.questionPhase, "complete");
-  assert.equal(finished.participants[0].finalRank, 1);
-  assert.ok(finished.participants[0].score >= 500);
+  const winner = finished.participants.find(({ finalRank }) => finalRank === 1);
+  const runnerUp = finished.participants.find(({ finalRank }) => finalRank === 2);
+  assert.equal(winner.id, member.id);
+  assert.ok(winner.score >= 500);
+  assert.equal(runnerUp.id, admin.id);
+  assert.equal(runnerUp.score, 0);
+  const participantResults = await getQuizGame(env, room.id, game.id, admin.id);
+  assert.deepEqual(
+    participantResults.participants.map(({ id, score, finalRank }) => ({ id, score, finalRank })),
+    finished.participants.map(({ id, score, finalRank }) => ({ id, score, finalRank })),
+  );
   const listed = await listQuizGames(env, room.id, member.id);
   assert.equal(listed.currentGame, null);
 });

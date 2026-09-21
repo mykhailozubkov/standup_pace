@@ -102,6 +102,39 @@
             <a id="startedBackLink" class="secondary-button quiz-room-link" href="/dashboard" data-i18n="backToRoom">Back to room</a>
           </section>
 
+          <section id="resultsView" class="quiz-results-view" hidden>
+            <div class="quiz-results-intro">
+              <p class="section-kicker" data-i18n="gameComplete">Quiz complete</p>
+              <h2 data-i18n="finalResults">Final results</h2>
+              <p data-i18n="finalResultsCopy">Every answer is counted. Here is the final leaderboard.</p>
+            </div>
+
+            <article class="quiz-winner-card">
+              <div class="quiz-winner-badge" aria-hidden="true">1</div>
+              <div class="quiz-winner-copy">
+                <span data-i18n="winner">Winner</span>
+                <strong id="winnerName"></strong>
+                <small id="winnerScore"></small>
+              </div>
+              <span class="quiz-winner-star" aria-hidden="true">★</span>
+            </article>
+
+            <article class="panel quiz-leaderboard-panel">
+              <div class="panel-header quiz-leaderboard-header">
+                <div>
+                  <p class="section-kicker" data-i18n="leaderboard">Leaderboard</p>
+                  <h2 data-i18n="finalStandings">Final standings</h2>
+                </div>
+                <span id="resultPlayerCount" class="count-pill">0</span>
+              </div>
+              <div id="leaderboardList" class="quiz-leaderboard-list" role="list"></div>
+            </article>
+
+            <div class="quiz-results-actions">
+              <a id="resultsBackLink" class="primary-button quiz-room-link" href="/dashboard" data-i18n="backToRoom">Back to room</a>
+            </div>
+          </section>
+
           <section id="cancelledView" class="panel quiz-started-view quiz-cancelled-view" hidden>
             <div class="quiz-started-orbit" aria-hidden="true"><span>×</span></div>
             <p class="section-kicker" data-i18n="gameCancelled">Game cancelled</p>

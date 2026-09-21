@@ -86,8 +86,13 @@ const translations = {
     watchingGame: "The quiz is already in progress",
     spectatorCopy: "Only players who joined the lobby before the start can submit answers.",
     gameComplete: "Quiz complete",
-    resultsComing: "The final scores are ready",
-    resultsComingCopy: "The complete leaderboard will be added in the next implementation stage.",
+    finalResults: "Final results",
+    finalResultsCopy: "Every answer is counted. Here is the final leaderboard.",
+    leaderboard: "Leaderboard",
+    finalStandings: "Final standings",
+    winner: "Winner",
+    winnerBadge: "Winner",
+    scorePoints: "{count} points",
     gameCancelled: "Game cancelled",
     lobbyClosed: "This lobby is closed",
     cancelledCopy: "Return to the room to launch another quiz.",
@@ -168,8 +173,13 @@ const translations = {
     watchingGame: "Викторина уже идёт",
     spectatorCopy: "Отвечать могут только игроки, которые вошли в лобби до старта.",
     gameComplete: "Викторина завершена",
-    resultsComing: "Итоговые баллы готовы",
-    resultsComingCopy: "Полная таблица лидеров будет добавлена на следующем этапе.",
+    finalResults: "Итоговые результаты",
+    finalResultsCopy: "Все ответы учтены. Перед вами итоговая таблица игроков.",
+    leaderboard: "Таблица лидеров",
+    finalStandings: "Итоговые места",
+    winner: "Победитель",
+    winnerBadge: "Победитель",
+    scorePoints: "{count} баллов",
     gameCancelled: "Игра отменена",
     lobbyClosed: "Это лобби закрыто",
     cancelledCopy: "Вернитесь в комнату, чтобы запустить другую викторину.",
@@ -198,6 +208,7 @@ const gameStatus = document.getElementById("gameStatus");
 const waitingView = document.getElementById("waitingView");
 const questionView = document.getElementById("questionView");
 const startedView = document.getElementById("startedView");
+const resultsView = document.getElementById("resultsView");
 const cancelledView = document.getElementById("cancelledView");
 const playerCount = document.getElementById("playerCount");
 const playersList = document.getElementById("playersList");
@@ -222,6 +233,11 @@ const nextQuestionButton = document.getElementById("nextQuestionButton");
 const startedKicker = document.getElementById("startedKicker");
 const startedHeading = document.getElementById("startedHeading");
 const startedCopy = document.getElementById("startedCopy");
+const winnerName = document.getElementById("winnerName");
+const winnerScore = document.getElementById("winnerScore");
+const resultPlayerCount = document.getElementById("resultPlayerCount");
+const leaderboardList = document.getElementById("leaderboardList");
+const resultsBackLink = document.getElementById("resultsBackLink");
 const toast = document.getElementById("toast");
 
 function tr(key) {
@@ -470,6 +486,62 @@ function renderQuestion() {
   renderQuestionTimer();
 }
 
+function scoreLabel(score) {
+  const formattedScore = new Intl.NumberFormat(language === "ru" ? "ru-RU" : "en-US")
+    .format(score);
+  return tr("scorePoints").replace("{count}", formattedScore);
+}
+
+function renderResults() {
+  const standings = [...game.participants].sort((left, right) => (
+    (left.finalRank ?? Number.MAX_SAFE_INTEGER) - (right.finalRank ?? Number.MAX_SAFE_INTEGER)
+    || right.score - left.score
+    || left.joinedAt - right.joinedAt
+    || left.name.localeCompare(right.name)
+  ));
+  const winner = standings.find(({ finalRank }) => finalRank === 1) || standings[0];
+
+  winnerName.textContent = winner?.name || "—";
+  winnerScore.textContent = winner ? scoreLabel(winner.score) : scoreLabel(0);
+  resultPlayerCount.textContent = String(standings.length);
+  leaderboardList.replaceChildren();
+
+  standings.forEach((participant) => {
+    const row = document.createElement("div");
+    row.className = "quiz-leaderboard-row";
+    row.setAttribute("role", "listitem");
+    if (participant.finalRank === 1) row.classList.add("winner");
+    if (participant.isCurrentUser) row.classList.add("current");
+
+    const rank = document.createElement("span");
+    rank.className = "quiz-leaderboard-rank";
+    rank.textContent = String(participant.finalRank ?? "—");
+
+    const avatar = document.createElement("span");
+    avatar.className = "avatar";
+    avatar.style.backgroundColor = avatarColor(participant.name);
+    avatar.textContent = initials(participant.name);
+
+    const identity = document.createElement("div");
+    identity.className = "quiz-leaderboard-player";
+    const name = document.createElement("strong");
+    name.textContent = participant.name;
+    const badges = document.createElement("small");
+    const labels = [];
+    if (participant.finalRank === 1) labels.push(tr("winnerBadge"));
+    if (participant.isCurrentUser) labels.push(tr("you"));
+    badges.textContent = labels.join(" · ");
+    badges.hidden = labels.length === 0;
+    identity.append(name, badges);
+
+    const score = document.createElement("strong");
+    score.className = "quiz-leaderboard-score";
+    score.textContent = scoreLabel(participant.score);
+    row.append(rank, avatar, identity, score);
+    leaderboardList.append(row);
+  });
+}
+
 function renderGame() {
   document.title = `${game.title} — Standup Helper`;
   gameTitle.textContent = game.title;
@@ -479,24 +551,21 @@ function renderGame() {
   hostName.textContent = game.host.name;
   questionCount.textContent = questionLabel(game.questionCount);
   const roomUrl = `/rooms/${encodeURIComponent(roomId)}`;
-  [backToRoomLink, startedBackLink, cancelledBackLink].forEach((link) => { link.href = roomUrl; });
+  [backToRoomLink, startedBackLink, resultsBackLink, cancelledBackLink]
+    .forEach((link) => { link.href = roomUrl; });
 
   waitingView.hidden = game.status !== "waiting";
   const canViewQuestion = game.status === "active"
     && game.currentQuestion
     && (game.isJoined || game.canManage);
   questionView.hidden = !canViewQuestion;
-  startedView.hidden = !(game.status === "finished" || (game.status === "active" && !canViewQuestion));
+  startedView.hidden = !(game.status === "active" && !canViewQuestion);
+  resultsView.hidden = game.status !== "finished";
   cancelledView.hidden = game.status !== "cancelled";
-  if (game.status === "finished") {
-    startedKicker.textContent = tr("gameComplete");
-    startedHeading.textContent = tr("resultsComing");
-    startedCopy.textContent = tr("resultsComingCopy");
-  } else {
-    startedKicker.textContent = tr("gameStarted");
-    startedHeading.textContent = tr("watchingGame");
-    startedCopy.textContent = tr("spectatorCopy");
-  }
+  startedKicker.textContent = tr("gameStarted");
+  startedHeading.textContent = tr("watchingGame");
+  startedCopy.textContent = tr("spectatorCopy");
+  if (game.status === "finished") renderResults();
   if (canViewQuestion) renderQuestion();
   if (game.status !== "waiting") return;
 
