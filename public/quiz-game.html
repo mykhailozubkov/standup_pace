@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Standup Helper live quiz" />
+    <title>Standup Helper — live quiz</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell quiz-game-shell">
+      <header class="topbar">
+        <a class="brand" href="/dashboard" aria-label="Standup Helper">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>Standup Helper</span>
+        </a>
+        <div class="topbar-actions">
+          <a id="backToRoomLink" class="header-link" href="/dashboard" data-i18n="backToRoom">Back to room</a>
+          <div class="language-switcher" role="group" aria-label="Language">
+            <button type="button" data-language="en" class="active">EN</button>
+            <button type="button" data-language="ru">RU</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="quiz-game-main">
+        <section id="gameLoading" class="room-loading" data-i18n="loading">Loading game…</section>
+        <div id="gameContent" hidden>
+          <section class="quiz-game-hero">
+            <div>
+              <p class="eyebrow" data-i18n="liveQuiz">Live quiz</p>
+              <h1 id="gameTitle"></h1>
+              <p id="gameHeroCopy"></p>
+            </div>
+            <div class="quiz-game-status-card">
+              <span id="gameStatusDot" class="meeting-status-dot"></span>
+              <div>
+                <small data-i18n="gameStatus">Game status</small>
+                <strong id="gameStatus"></strong>
+              </div>
+            </div>
+          </section>
+
+          <section id="waitingView" class="quiz-lobby-grid">
+            <article class="panel quiz-lobby-panel">
+              <div class="panel-header">
+                <div>
+                  <p class="section-kicker" data-i18n="players">Players</p>
+                  <h2><span data-i18n="lobby">Lobby</span> <span id="playerCount" class="count-pill">0</span></h2>
+                </div>
+                <span id="realtimeIndicator" class="realtime-indicator"><i></i><span data-i18n="connecting">Connecting…</span></span>
+              </div>
+              <div id="playersList" class="quiz-player-list" aria-live="polite"></div>
+            </article>
+
+            <aside class="panel quiz-lobby-controls">
+              <p class="section-kicker" data-i18n="gameSetup">Game setup</p>
+              <h2 data-i18n="readyToPlay">Ready to play?</h2>
+              <dl class="quiz-game-facts">
+                <div><dt data-i18n="host">Host</dt><dd id="hostName"></dd></div>
+                <div><dt data-i18n="questions">Questions</dt><dd id="questionCount"></dd></div>
+              </dl>
+              <p id="lobbyGuidance" class="quiz-lobby-guidance"></p>
+              <div class="quiz-game-actions">
+                <button id="joinGameButton" class="primary-button" type="button" data-i18n="joinGame">Join game</button>
+                <button id="leaveGameButton" class="secondary-button" type="button" hidden data-i18n="leaveGame">Leave lobby</button>
+                <button id="startGameButton" class="primary-button quiz-start-button" type="button" hidden data-i18n="startGame">Start quiz</button>
+                <button id="cancelGameButton" class="danger-button" type="button" hidden data-i18n="cancelGame">Cancel game</button>
+              </div>
+            </aside>
+          </section>
+
+          <section id="startedView" class="panel quiz-started-view" hidden>
+            <div class="quiz-started-orbit" aria-hidden="true"><span>1</span></div>
+            <p class="section-kicker" data-i18n="gameStarted">Game started</p>
+            <h2 data-i18n="firstQuestionReady">The first question is ready</h2>
+            <p data-i18n="questionStageCopy">All connected players received the same game state. The interactive question screen is the next implementation stage.</p>
+            <a id="startedBackLink" class="secondary-button quiz-room-link" href="/dashboard" data-i18n="backToRoom">Back to room</a>
+          </section>
+
+          <section id="cancelledView" class="panel quiz-started-view quiz-cancelled-view" hidden>
+            <div class="quiz-started-orbit" aria-hidden="true"><span>×</span></div>
+            <p class="section-kicker" data-i18n="gameCancelled">Game cancelled</p>
+            <h2 data-i18n="lobbyClosed">This lobby is closed</h2>
+            <p data-i18n="cancelledCopy">Return to the room to launch another quiz.</p>
+            <a id="cancelledBackLink" class="primary-button quiz-room-link" href="/dashboard" data-i18n="backToRoom">Back to room</a>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/quiz-game.js"></script>
+  </body>
+</html>

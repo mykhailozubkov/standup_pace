@@ -73,6 +73,11 @@ test("serves the public account page and protects the workspace", async () => {
   ), env);
   assert.equal(quizEditor.status, 302);
 
+  const quizGame = await worker.fetch(request(
+    "/rooms/688285e9-dbea-4b57-bf5c-a283ccca9716/quiz-games/3f46f7af-9d88-4c0c-a242-22d44ac94dc5",
+  ), env);
+  assert.equal(quizGame.status, 302);
+
   const live = await worker.fetch(request(
     "/api/rooms/688285e9-dbea-4b57-bf5c-a283ccca9716/live",
   ), env);
@@ -102,12 +107,26 @@ test("registers a user and exposes the protected workspace", async () => {
   assert.equal(quizEditor.status, 200);
   assert.equal(await quizEditor.text(), "asset:/quiz-editor.html");
 
+  const quizGame = await worker.fetch(request(
+    "/rooms/688285e9-dbea-4b57-bf5c-a283ccca9716/quiz-games/3f46f7af-9d88-4c0c-a242-22d44ac94dc5",
+    { headers: { Cookie: cookie } },
+  ), env);
+  assert.equal(quizGame.status, 200);
+  assert.equal(await quizGame.text(), "asset:/quiz-game.html");
+
   const rawQuizEditor = await worker.fetch(request(
     "/quiz-editor.html",
     { headers: { Cookie: cookie } },
   ), env);
   assert.equal(rawQuizEditor.status, 302);
   assert.equal(rawQuizEditor.headers.get("location"), `${baseURL}/dashboard`);
+
+  const rawQuizGame = await worker.fetch(request(
+    "/quiz-game.html",
+    { headers: { Cookie: cookie } },
+  ), env);
+  assert.equal(rawQuizGame.status, 302);
+  assert.equal(rawQuizGame.headers.get("location"), `${baseURL}/dashboard`);
 
   const session = await worker.fetch(request("/api/auth/get-session", {
     headers: { Cookie: cookie },

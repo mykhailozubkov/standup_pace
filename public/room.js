@@ -12,6 +12,7 @@ let assignmentState = {
 };
 let assignmentLoadingKind = null;
 let quizzes = [];
+let quizGameState = { currentGame: null, games: [] };
 let roomSocket = null;
 let roomSocketRetry = 0;
 let roomSocketRetryTimer = null;
@@ -136,6 +137,12 @@ const translations = {
     openRouterUnavailable: "The task model is temporarily unavailable.",
     invalidModelResponse: "The model returned an invalid task. Try again.",
     quizLibrary: "Quiz library",
+    liveQuiz: "Live quiz",
+    waitingLobby: "Waiting for players",
+    quizInProgress: "Quiz in progress",
+    quizPlayers: "players",
+    hostedBy: "Hosted by",
+    openQuizGame: "Open game",
     quizzes: "Quizzes",
     quizzesCopy: "Prepare reusable question sets for future live games in this room.",
     createQuiz: "Create quiz",
@@ -147,6 +154,10 @@ const translations = {
     questionsMany: "questions",
     updatedBy: "Updated by",
     editQuiz: "Edit",
+    launchQuiz: "Launch game",
+    launchingQuiz: "Launching…",
+    quizGameAlreadyOpen: "Another quiz game is already open in this room.",
+    quizGameCreateFailed: "Could not open the quiz lobby.",
     archiveQuiz: "Archive",
     archiveQuizConfirm: "Archive this quiz? It will disappear from the room list.",
     quizArchived: "Quiz archived",
@@ -271,6 +282,12 @@ const translations = {
     openRouterUnavailable: "Модель заданий временно недоступна.",
     invalidModelResponse: "Модель вернула некорректное задание. Попробуйте ещё раз.",
     quizLibrary: "Библиотека викторин",
+    liveQuiz: "Идёт викторина",
+    waitingLobby: "Ожидаем игроков",
+    quizInProgress: "Викторина идёт",
+    quizPlayers: "игроков",
+    hostedBy: "Ведущий",
+    openQuizGame: "Открыть игру",
     quizzes: "Викторины",
     quizzesCopy: "Подготовьте наборы вопросов для будущих игр в этой комнате.",
     createQuiz: "Создать викторину",
@@ -282,6 +299,10 @@ const translations = {
     questionsMany: "вопросов",
     updatedBy: "Обновил(а)",
     editQuiz: "Редактировать",
+    launchQuiz: "Запустить игру",
+    launchingQuiz: "Запускаем…",
+    quizGameAlreadyOpen: "В этой комнате уже открыта другая викторина.",
+    quizGameCreateFailed: "Не удалось открыть лобби викторины.",
     archiveQuiz: "Архивировать",
     archiveQuizConfirm: "Архивировать эту викторину? Она исчезнет из списка комнаты.",
     quizArchived: "Викторина архивирована",
@@ -338,6 +359,11 @@ const activityHistoryList = document.getElementById("activityHistoryList");
 const quizCount = document.getElementById("quizCount");
 const quizzesList = document.getElementById("quizzesList");
 const createQuizLink = document.getElementById("createQuizLink");
+const liveQuizPanel = document.getElementById("liveQuizPanel");
+const liveQuizTitle = document.getElementById("liveQuizTitle");
+const liveQuizStatus = document.getElementById("liveQuizStatus");
+const liveQuizMeta = document.getElementById("liveQuizMeta");
+const openQuizGameLink = document.getElementById("openQuizGameLink");
 
 function tr(key) {
   return translations[language][key] || key;
@@ -486,6 +512,7 @@ function applyLanguage(nextLanguage) {
   if (room) renderMeetingState();
   if (room) renderSpeechState();
   if (room) renderAssignmentState();
+  if (room) renderQuizGameState();
   if (room) renderQuizzes();
 }
 
@@ -581,6 +608,17 @@ function quizQuestionLabel(count) {
   return `${count} ${tr(key)}`;
 }
 
+function renderQuizGameState() {
+  const game = quizGameState.currentGame;
+  liveQuizPanel.hidden = !game;
+  if (!game) return;
+  liveQuizTitle.textContent = game.title;
+  liveQuizStatus.textContent = tr(game.status === "active" ? "quizInProgress" : "waitingLobby");
+  liveQuizStatus.className = `live-quiz-status ${game.status}`;
+  liveQuizMeta.textContent = `${game.participantCount} ${tr("quizPlayers")} · ${tr("hostedBy")} ${game.host.name}`;
+  openQuizGameLink.href = `/rooms/${encodeURIComponent(room.id)}/quiz-games/${encodeURIComponent(game.id)}`;
+}
+
 function renderQuizzes() {
   if (!quizzesList || !room) return;
   const canManage = room.role === "owner" || room.role === "admin";
@@ -627,6 +665,12 @@ function renderQuizzes() {
     if (canManage) {
       const actions = document.createElement("div");
       actions.className = "quiz-summary-actions";
+      const launch = document.createElement("button");
+      launch.className = "primary-button quiz-launch-button";
+      launch.type = "button";
+      launch.textContent = tr("launchQuiz");
+      launch.disabled = Boolean(quizGameState.currentGame);
+      launch.addEventListener("click", () => launchQuizGame(quiz, launch));
       const edit = document.createElement("a");
       edit.className = "secondary-button quiz-edit-link";
       edit.href = `/rooms/${encodeURIComponent(room.id)}/quizzes/${encodeURIComponent(quiz.id)}/edit`;
@@ -636,11 +680,48 @@ function renderQuizzes() {
       archive.type = "button";
       archive.textContent = tr("archiveQuiz");
       archive.addEventListener("click", () => archiveRoomQuiz(quiz, archive));
-      actions.append(edit, archive);
+      actions.append(launch, edit, archive);
       card.append(actions);
     }
     quizzesList.append(card);
   });
+}
+
+async function loadQuizGames(showFailure = true) {
+  if (!room) return;
+  try {
+    const payload = await api(`/api/rooms/${encodeURIComponent(room.id)}/quiz-games`, {
+      cache: "no-store",
+    });
+    quizGameState = {
+      currentGame: payload.currentGame || null,
+      games: payload.games || [],
+    };
+    renderQuizGameState();
+    renderQuizzes();
+  } catch (error) {
+    if (showFailure && error?.message !== "AUTH_REQUIRED") showToast(tr("quizGameCreateFailed"), true);
+  }
+}
+
+async function launchQuizGame(quiz, button) {
+  button.disabled = true;
+  button.textContent = tr("launchingQuiz");
+  try {
+    const payload = await api(`/api/rooms/${encodeURIComponent(room.id)}/quiz-games`, {
+      method: "POST",
+      body: JSON.stringify({ quizId: quiz.id }),
+    });
+    window.location.assign(`/rooms/${encodeURIComponent(room.id)}/quiz-games/${encodeURIComponent(payload.game.id)}`);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = tr("launchQuiz");
+    showToast(
+      tr(error?.code === "QUIZ_GAME_ALREADY_OPEN" ? "quizGameAlreadyOpen" : "quizGameCreateFailed"),
+      true,
+    );
+    if (error?.code === "QUIZ_GAME_ALREADY_OPEN") await loadQuizGames(false);
+  }
 }
 
 async function loadQuizzes(showFailure = true) {
@@ -1090,7 +1171,7 @@ async function loadRoom() {
     loading.hidden = true;
     content.hidden = false;
     renderRoom();
-    await Promise.all([loadMeetingState(), loadQuizzes()]);
+    await Promise.all([loadMeetingState(), loadQuizzes(), loadQuizGames()]);
     connectRoomRealtime();
   } catch {
     loading.textContent = tr("unavailable");
