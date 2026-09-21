@@ -71,6 +71,8 @@ const translations = {
     answerReveal: "Answer reveal",
     closeQuestion: "End question",
     closingQuestion: "Closing question…",
+    showStandings: "Show leaderboard",
+    showingStandings: "Opening leaderboard…",
     nextQuestion: "Next question",
     showFinalResults: "Finish quiz",
     advancingQuestion: "Preparing next question…",
@@ -82,6 +84,13 @@ const translations = {
     answerCountMany: "answers",
     questionClosed: "Answers are already closed for this question.",
     questionNotRevealed: "Reveal the answer before moving on.",
+    standingsNotVisible: "Show the leaderboard before continuing.",
+    roundComplete: "Round complete",
+    currentStandings: "Current standings",
+    scoreboard: "Scoreboard",
+    roundProgress: "Scores after question {current} of {total}",
+    hostContinueGuidance: "Continue when everyone is ready.",
+    playerContinueGuidance: "Waiting for the host to continue…",
     gameStarted: "Game started",
     watchingGame: "The quiz is already in progress",
     spectatorCopy: "Only players who joined the lobby before the start can submit answers.",
@@ -158,6 +167,8 @@ const translations = {
     answerReveal: "Правильный ответ",
     closeQuestion: "Завершить вопрос",
     closingQuestion: "Завершаем вопрос…",
+    showStandings: "Показать таблицу",
+    showingStandings: "Открываем таблицу…",
     nextQuestion: "Следующий вопрос",
     showFinalResults: "Завершить викторину",
     advancingQuestion: "Готовим следующий вопрос…",
@@ -169,6 +180,13 @@ const translations = {
     answerCountMany: "ответов",
     questionClosed: "Ответы на этот вопрос уже закрыты.",
     questionNotRevealed: "Перед переходом покажите правильный ответ.",
+    standingsNotVisible: "Перед продолжением покажите таблицу лидеров.",
+    roundComplete: "Раунд завершён",
+    currentStandings: "Текущие результаты",
+    scoreboard: "Таблица баллов",
+    roundProgress: "Результаты после вопроса {current} из {total}",
+    hostContinueGuidance: "Продолжайте, когда все будут готовы.",
+    playerContinueGuidance: "Ожидаем, пока ведущий продолжит игру…",
     gameStarted: "Игра началась",
     watchingGame: "Викторина уже идёт",
     spectatorCopy: "Отвечать могут только игроки, которые вошли в лобби до старта.",
@@ -207,6 +225,7 @@ const gameStatusDot = document.getElementById("gameStatusDot");
 const gameStatus = document.getElementById("gameStatus");
 const waitingView = document.getElementById("waitingView");
 const questionView = document.getElementById("questionView");
+const roundStandingsView = document.getElementById("roundStandingsView");
 const startedView = document.getElementById("startedView");
 const resultsView = document.getElementById("resultsView");
 const cancelledView = document.getElementById("cancelledView");
@@ -229,7 +248,13 @@ const answerOptions = document.getElementById("answerOptions");
 const answerStatus = document.getElementById("answerStatus");
 const questionHostActions = document.getElementById("questionHostActions");
 const closeQuestionButton = document.getElementById("closeQuestionButton");
+const showStandingsButton = document.getElementById("showStandingsButton");
 const nextQuestionButton = document.getElementById("nextQuestionButton");
+const roundStandingsProgress = document.getElementById("roundStandingsProgress");
+const roundPlayerCount = document.getElementById("roundPlayerCount");
+const roundLeaderboardList = document.getElementById("roundLeaderboardList");
+const roundStandingsGuidance = document.getElementById("roundStandingsGuidance");
+const roundStandingsActions = document.getElementById("roundStandingsActions");
 const startedKicker = document.getElementById("startedKicker");
 const startedHeading = document.getElementById("startedHeading");
 const startedCopy = document.getElementById("startedCopy");
@@ -286,6 +311,7 @@ function errorMessage(error) {
     QUIZ_QUESTION_CLOSED: "questionClosed",
     QUIZ_QUESTION_NOT_OPEN: "questionClosed",
     QUIZ_QUESTION_NOT_REVEALED: "questionNotRevealed",
+    QUIZ_STANDINGS_NOT_VISIBLE: "standingsNotVisible",
   };
   return tr(errors[error?.code] || "requestFailed");
 }
@@ -479,10 +505,7 @@ function renderQuestion() {
   }
   questionHostActions.hidden = !game.canManage;
   closeQuestionButton.hidden = !game.canManage || revealed;
-  nextQuestionButton.hidden = !game.canManage || !revealed;
-  nextQuestionButton.textContent = tr(
-    question.position === game.questionCount ? "showFinalResults" : "nextQuestion",
-  );
+  showStandingsButton.hidden = !game.canManage || !revealed;
   renderQuestionTimer();
 }
 
@@ -492,30 +515,31 @@ function scoreLabel(score) {
   return tr("scorePoints").replace("{count}", formattedScore);
 }
 
-function renderResults() {
-  const standings = [...game.participants].sort((left, right) => (
-    (left.finalRank ?? Number.MAX_SAFE_INTEGER) - (right.finalRank ?? Number.MAX_SAFE_INTEGER)
-    || right.score - left.score
+function sortedStandings(final = false) {
+  return [...game.participants].sort((left, right) => (
+    (final
+      ? (left.finalRank ?? Number.MAX_SAFE_INTEGER) - (right.finalRank ?? Number.MAX_SAFE_INTEGER)
+      : right.score - left.score)
     || left.joinedAt - right.joinedAt
-    || left.name.localeCompare(right.name)
+    || left.id.localeCompare(right.id)
   ));
-  const winner = standings.find(({ finalRank }) => finalRank === 1) || standings[0];
+}
 
-  winnerName.textContent = winner?.name || "—";
-  winnerScore.textContent = winner ? scoreLabel(winner.score) : scoreLabel(0);
-  resultPlayerCount.textContent = String(standings.length);
-  leaderboardList.replaceChildren();
+function renderLeaderboard(container, standings, final = false) {
+  container.replaceChildren();
 
-  standings.forEach((participant) => {
+  standings.forEach((participant, index) => {
+    const rankValue = final ? participant.finalRank : index + 1;
+    const firstPlace = rankValue === 1;
     const row = document.createElement("div");
     row.className = "quiz-leaderboard-row";
     row.setAttribute("role", "listitem");
-    if (participant.finalRank === 1) row.classList.add("winner");
+    if (firstPlace) row.classList.add(final ? "winner" : "leader");
     if (participant.isCurrentUser) row.classList.add("current");
 
     const rank = document.createElement("span");
     rank.className = "quiz-leaderboard-rank";
-    rank.textContent = String(participant.finalRank ?? "—");
+    rank.textContent = String(rankValue ?? "—");
 
     const avatar = document.createElement("span");
     avatar.className = "avatar";
@@ -528,7 +552,7 @@ function renderResults() {
     name.textContent = participant.name;
     const badges = document.createElement("small");
     const labels = [];
-    if (participant.finalRank === 1) labels.push(tr("winnerBadge"));
+    if (final && firstPlace) labels.push(tr("winnerBadge"));
     if (participant.isCurrentUser) labels.push(tr("you"));
     badges.textContent = labels.join(" · ");
     badges.hidden = labels.length === 0;
@@ -538,8 +562,34 @@ function renderResults() {
     score.className = "quiz-leaderboard-score";
     score.textContent = scoreLabel(participant.score);
     row.append(rank, avatar, identity, score);
-    leaderboardList.append(row);
+    container.append(row);
   });
+}
+
+function renderRoundStandings() {
+  const standings = sortedStandings();
+  roundStandingsProgress.textContent = tr("roundProgress")
+    .replace("{current}", String(game.currentQuestionPosition))
+    .replace("{total}", String(game.questionCount));
+  roundPlayerCount.textContent = String(standings.length);
+  roundStandingsGuidance.textContent = tr(
+    game.canManage ? "hostContinueGuidance" : "playerContinueGuidance",
+  );
+  roundStandingsActions.hidden = !game.canManage;
+  nextQuestionButton.textContent = tr(
+    game.currentQuestionPosition === game.questionCount ? "showFinalResults" : "nextQuestion",
+  );
+  renderLeaderboard(roundLeaderboardList, standings);
+}
+
+function renderResults() {
+  const standings = sortedStandings(true);
+  const winner = standings.find(({ finalRank }) => finalRank === 1) || standings[0];
+
+  winnerName.textContent = winner?.name || "—";
+  winnerScore.textContent = winner ? scoreLabel(winner.score) : scoreLabel(0);
+  resultPlayerCount.textContent = String(standings.length);
+  renderLeaderboard(leaderboardList, standings, true);
 }
 
 function renderGame() {
@@ -556,10 +606,15 @@ function renderGame() {
 
   waitingView.hidden = game.status !== "waiting";
   const canViewQuestion = game.status === "active"
+    && !game.showStandings
     && game.currentQuestion
     && (game.isJoined || game.canManage);
+  const canViewRoundStandings = game.status === "active"
+    && game.showStandings
+    && (game.isJoined || game.canManage);
   questionView.hidden = !canViewQuestion;
-  startedView.hidden = !(game.status === "active" && !canViewQuestion);
+  roundStandingsView.hidden = !canViewRoundStandings;
+  startedView.hidden = !(game.status === "active" && !canViewQuestion && !canViewRoundStandings);
   resultsView.hidden = game.status !== "finished";
   cancelledView.hidden = game.status !== "cancelled";
   startedKicker.textContent = tr("gameStarted");
@@ -567,6 +622,7 @@ function renderGame() {
   startedCopy.textContent = tr("spectatorCopy");
   if (game.status === "finished") renderResults();
   if (canViewQuestion) renderQuestion();
+  if (canViewRoundStandings) renderRoundStandings();
   if (game.status !== "waiting") return;
 
   renderPlayers();
@@ -732,7 +788,12 @@ async function closeCurrentQuestion(automatic = false) {
 }
 
 async function advanceCurrentQuestion() {
-  if (roundActionInFlight || game?.status !== "active" || game?.questionPhase !== "reveal") return;
+  if (
+    roundActionInFlight
+    || game?.status !== "active"
+    || game?.questionPhase !== "reveal"
+    || !game?.showStandings
+  ) return;
   roundActionInFlight = true;
   nextQuestionButton.disabled = true;
   nextQuestionButton.textContent = tr("advancingQuestion");
@@ -756,6 +817,35 @@ async function advanceCurrentQuestion() {
   }
 }
 
+async function showCurrentStandings() {
+  if (
+    roundActionInFlight
+    || game?.status !== "active"
+    || game?.questionPhase !== "reveal"
+    || game?.showStandings
+  ) return;
+  roundActionInFlight = true;
+  showStandingsButton.disabled = true;
+  showStandingsButton.textContent = tr("showingStandings");
+  const requestedAt = Date.now();
+  try {
+    const payload = await api(
+      `/api/rooms/${encodeURIComponent(roomId)}/quiz-games/${encodeURIComponent(gameId)}/show-standings`,
+      { method: "POST" },
+    );
+    game = payload.game;
+    syncServerClock(game.serverNow, requestedAt);
+    renderGame();
+  } catch (error) {
+    showToast(errorMessage(error), true);
+    await loadGame(false);
+  } finally {
+    roundActionInFlight = false;
+    showStandingsButton.disabled = false;
+    showStandingsButton.textContent = tr("showStandings");
+  }
+}
+
 joinGameButton.addEventListener("click", () => runAction("join", joinGameButton, "joining"));
 leaveGameButton.addEventListener("click", () => runAction("leave", leaveGameButton, "leaving"));
 startGameButton.addEventListener("click", () => runAction("start", startGameButton, "starting"));
@@ -763,6 +853,7 @@ cancelGameButton.addEventListener("click", () => {
   if (confirm(tr("cancelConfirm"))) runAction("cancel", cancelGameButton, "cancelling");
 });
 closeQuestionButton.addEventListener("click", () => closeCurrentQuestion(false));
+showStandingsButton.addEventListener("click", showCurrentStandings);
 nextQuestionButton.addEventListener("click", advanceCurrentQuestion);
 
 document.querySelectorAll("[data-language]").forEach((button) => {

@@ -89,9 +89,31 @@
               <p id="answerStatus" class="quiz-answer-status" aria-live="polite"></p>
               <div id="questionHostActions" class="quiz-question-host-actions" hidden>
                 <button id="closeQuestionButton" class="secondary-button" type="button" data-i18n="closeQuestion">End question</button>
-                <button id="nextQuestionButton" class="primary-button" type="button" hidden data-i18n="nextQuestion">Next question</button>
+                <button id="showStandingsButton" class="primary-button" type="button" hidden data-i18n="showStandings">Show leaderboard</button>
               </div>
             </article>
+          </section>
+
+          <section id="roundStandingsView" class="quiz-round-standings-view" hidden>
+            <div class="quiz-results-intro">
+              <p class="section-kicker" data-i18n="roundComplete">Round complete</p>
+              <h2 data-i18n="currentStandings">Current standings</h2>
+              <p id="roundStandingsProgress"></p>
+            </div>
+            <article class="panel quiz-leaderboard-panel">
+              <div class="panel-header quiz-leaderboard-header">
+                <div>
+                  <p class="section-kicker" data-i18n="leaderboard">Leaderboard</p>
+                  <h2 data-i18n="scoreboard">Scoreboard</h2>
+                </div>
+                <span id="roundPlayerCount" class="count-pill">0</span>
+              </div>
+              <div id="roundLeaderboardList" class="quiz-leaderboard-list" role="list"></div>
+            </article>
+            <p id="roundStandingsGuidance" class="quiz-round-standings-guidance"></p>
+            <div id="roundStandingsActions" class="quiz-results-actions" hidden>
+              <button id="nextQuestionButton" class="primary-button" type="button" data-i18n="nextQuestion">Next question</button>
+            </div>
           </section>
 
           <section id="startedView" class="panel quiz-started-view" hidden>

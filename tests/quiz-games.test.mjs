@@ -9,6 +9,7 @@ import {
   joinQuizGame,
   leaveQuizGame,
   listQuizGames,
+  showQuizGameStandings,
   startQuizGame,
   submitQuizGameAnswer,
 } from "../src/quiz-games.ts";
@@ -80,6 +81,7 @@ test("creates an immutable game snapshot and exposes a safe lobby", async () => 
   assert.equal(started.currentQuestion.prompt, "Which status means Not Found?");
   assert.equal(started.currentQuestion.timeLimitSeconds, 20);
   assert.equal(started.currentQuestion.options.length, 3);
+  assert.equal(started.showStandings, false);
   assert.equal("isCorrect" in started.currentQuestion.options[0], false);
   assert.equal(typeof started.questionStartedAt, "number");
 
@@ -271,9 +273,25 @@ test("reveals the correct answer, awards speed points, and advances the game", a
     /QUIZ_QUESTION_CLOSED/,
   );
 
+  await assert.rejects(
+    () => advanceQuizGameQuestion(env, room.id, game.id, admin.id),
+    /QUIZ_STANDINGS_NOT_VISIBLE/,
+  );
+  await assert.rejects(
+    () => showQuizGameStandings(env, room.id, game.id, member.id),
+    /ROOM_FORBIDDEN/,
+  );
+  const standings = await showQuizGameStandings(env, room.id, game.id, owner.id);
+  assert.equal(standings.showStandings, true);
+  assert.ok(
+    standings.participants.find(({ id }) => id === member.id).score
+      > standings.participants.find(({ id }) => id === admin.id).score,
+  );
+
   const next = await advanceQuizGameQuestion(env, room.id, game.id, admin.id);
   assert.equal(next.status, "active");
   assert.equal(next.questionPhase, "question");
+  assert.equal(next.showStandings, false);
   assert.equal(next.currentQuestion.position, 2);
   assert.equal("isCorrect" in next.currentQuestion.options[0], false);
 });
@@ -292,6 +310,7 @@ test("lets the timer reveal a question and finishes after the last reveal", asyn
   `).bind(game.id).all();
   const firstReveal = await closeQuizGameQuestion(env, room.id, game.id, member.id);
   assert.equal(firstReveal.questionPhase, "reveal");
+  await showQuizGameStandings(env, room.id, game.id, owner.id);
   await advanceQuizGameQuestion(env, room.id, game.id, owner.id);
 
   const second = await getQuizGame(env, room.id, game.id, member.id);
@@ -299,9 +318,11 @@ test("lets the timer reveal a question and finishes after the last reveal", asyn
     optionId: second.currentQuestion.options[1].id,
   });
   await closeQuizGameQuestion(env, room.id, game.id, owner.id);
+  await showQuizGameStandings(env, room.id, game.id, owner.id);
   const finished = await advanceQuizGameQuestion(env, room.id, game.id, owner.id);
   assert.equal(finished.status, "finished");
   assert.equal(finished.questionPhase, "complete");
+  assert.equal(finished.showStandings, false);
   const winner = finished.participants.find(({ finalRank }) => finalRank === 1);
   const runnerUp = finished.participants.find(({ finalRank }) => finalRank === 2);
   assert.equal(winner.id, member.id);

@@ -48,6 +48,7 @@ import {
   joinQuizGame,
   leaveQuizGame,
   listQuizGames,
+  showQuizGameStandings,
   startQuizGame,
   submitQuizGameAnswer,
 } from "./quiz-games.ts";
@@ -449,12 +450,14 @@ async function handleQuizQuestionAction(
   env: Env,
   roomId: string,
   gameId: string,
-  action: "close-question" | "next-question",
+  action: "close-question" | "show-standings" | "next-question",
 ) {
   const session = await requireAuthSession(request, env);
   const handler = action === "close-question"
     ? closeQuizGameQuestion
-    : advanceQuizGameQuestion;
+    : action === "show-standings"
+      ? showQuizGameStandings
+      : advanceQuizGameQuestion;
   const game = await handler(env, roomId, gameId, session.user.id);
   await publishRoomEvent(env, roomId, "quiz-game.updated");
   return sendJson(200, { game });
@@ -706,7 +709,7 @@ app.post("/api/rooms/:roomId/quiz-games/:gameId/answer", (context) => handleQuiz
 ));
 app.all("/api/rooms/:roomId/quiz-games/:gameId/answer", () => methodNotAllowed("POST"));
 
-for (const action of ["close-question", "next-question"] as const) {
+for (const action of ["close-question", "show-standings", "next-question"] as const) {
   app.post(`/api/rooms/:roomId/quiz-games/:gameId/${action}`, (context) => handleQuizQuestionAction(
     context.req.raw,
     context.env,

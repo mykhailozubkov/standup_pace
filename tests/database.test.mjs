@@ -12,6 +12,7 @@ const assignmentMigrationUrl = new URL("../migrations/0006_create_assignments.sq
 const quizMigrationUrl = new URL("../migrations/0007_create_quizzes.sql", import.meta.url);
 const quizGameMigrationUrl = new URL("../migrations/0008_create_quiz_games.sql", import.meta.url);
 const quizQuestionPhaseMigrationUrl = new URL("../migrations/0009_add_quiz_question_phases.sql", import.meta.url);
+const quizRoundStandingsMigrationUrl = new URL("../migrations/0010_add_quiz_round_standings.sql", import.meta.url);
 
 test("the initial D1 migration creates the room data model", async () => {
   const database = new DatabaseSync(":memory:");
@@ -298,6 +299,7 @@ test("the quiz game migration snapshots live games, participants and answers", a
   database.exec(await readFile(quizMigrationUrl, "utf8"));
   database.exec(await readFile(quizGameMigrationUrl, "utf8"));
   database.exec(await readFile(quizQuestionPhaseMigrationUrl, "utf8"));
+  database.exec(await readFile(quizRoundStandingsMigrationUrl, "utf8"));
 
   database.prepare("INSERT INTO user_profiles (user_id, display_name) VALUES (?, ?)")
     .run("user-1", "Ada");
@@ -370,5 +372,10 @@ test("the quiz game migration snapshots live games, participants and answers", a
     database.prepare("SELECT question_phase FROM quiz_games WHERE id = ?")
       .get("game-1").question_phase,
     "question",
+  );
+  assert.equal(
+    database.prepare("SELECT show_standings FROM quiz_games WHERE id = ?")
+      .get("game-1").show_standings,
+    0,
   );
 });

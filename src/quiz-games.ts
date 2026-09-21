@@ -41,6 +41,7 @@ interface GameRow {
   question_phase: QuestionPhase;
   question_started_at: number | null;
   question_closed_at: number | null;
+  show_standings: number;
   started_at: number | null;
   finished_at: number | null;
   cancelled_at: number | null;
@@ -203,6 +204,7 @@ function gameSummary(game: GameRow, role: RoomRole) {
     questionPhase: game.question_phase,
     questionStartedAt: game.question_started_at === null ? null : Number(game.question_started_at),
     questionClosedAt: game.question_closed_at === null ? null : Number(game.question_closed_at),
+    showStandings: Boolean(game.show_standings),
     startedAt: game.started_at === null ? null : Number(game.started_at),
     finishedAt: game.finished_at === null ? null : Number(game.finished_at),
     cancelledAt: game.cancelled_at === null ? null : Number(game.cancelled_at),
@@ -463,6 +465,7 @@ export async function startQuizGame(env: Env, roomId: string, gameId: string, us
       question_phase = 'question',
       question_started_at = CAST(unixepoch('subsec') * 1000 AS INTEGER),
       question_closed_at = NULL,
+      show_standings = 0,
       started_at = unixepoch(),
       updated_at = unixepoch()
     WHERE id = ? AND room_id = ? AND status = 'waiting'
@@ -626,6 +629,7 @@ export async function advanceQuizGameQuestion(
   const game = await gameRow(env, roomId, gameId, userId);
   if (game.status !== "active") throw new AppError("QUIZ_GAME_NOT_ACTIVE", 409);
   if (game.question_phase !== "reveal") throw new AppError("QUIZ_QUESTION_NOT_REVEALED", 409);
+  if (!game.show_standings) throw new AppError("QUIZ_STANDINGS_NOT_VISIBLE", 409);
 
   if (Number(game.current_question_position) < Number(game.question_count)) {
     const result = await env.DB.prepare(`
@@ -635,8 +639,10 @@ export async function advanceQuizGameQuestion(
         question_phase = 'question',
         question_started_at = CAST(unixepoch('subsec') * 1000 AS INTEGER),
         question_closed_at = NULL,
+        show_standings = 0,
         updated_at = unixepoch()
-      WHERE id = ? AND room_id = ? AND status = 'active' AND question_phase = 'reveal'
+      WHERE id = ? AND room_id = ? AND status = 'active'
+        AND question_phase = 'reveal' AND show_standings = 1
     `).bind(gameId, roomId).all();
     if (!result.meta.changes) throw new AppError("QUIZ_QUESTION_NOT_REVEALED", 409);
   } else {
@@ -662,11 +668,37 @@ export async function advanceQuizGameQuestion(
         SET
           status = 'finished',
           question_phase = 'complete',
+          show_standings = 0,
           finished_at = unixepoch(),
           updated_at = unixepoch()
-        WHERE id = ? AND room_id = ? AND status = 'active' AND question_phase = 'reveal'
+        WHERE id = ? AND room_id = ? AND status = 'active'
+          AND question_phase = 'reveal' AND show_standings = 1
       `).bind(gameId, roomId),
     ]);
+  }
+
+  return gameDetail(env, roomId, gameId, userId, access.role);
+}
+
+export async function showQuizGameStandings(
+  env: Env,
+  roomId: string,
+  gameId: string,
+  userId: string,
+) {
+  const access = await roomAccess(env, roomId, userId);
+  requireManager(access);
+  const game = await gameRow(env, roomId, gameId, userId);
+  if (game.status !== "active") throw new AppError("QUIZ_GAME_NOT_ACTIVE", 409);
+  if (game.question_phase !== "reveal") throw new AppError("QUIZ_QUESTION_NOT_REVEALED", 409);
+
+  const result = await env.DB.prepare(`
+    UPDATE quiz_games
+    SET show_standings = 1, updated_at = unixepoch()
+    WHERE id = ? AND room_id = ? AND status = 'active' AND question_phase = 'reveal'
+  `).bind(gameId, roomId).all();
+  if (!result.meta.changes && !game.show_standings) {
+    throw new AppError("QUIZ_QUESTION_NOT_REVEALED", 409);
   }
 
   return gameDetail(env, roomId, gameId, userId, access.role);
@@ -682,6 +714,7 @@ export async function cancelQuizGame(env: Env, roomId: string, gameId: string, u
     SET
       status = 'cancelled',
       question_phase = 'complete',
+      show_standings = 0,
       question_closed_at = CASE
         WHEN status = 'active' THEN CAST(unixepoch('subsec') * 1000 AS INTEGER)
         ELSE question_closed_at
